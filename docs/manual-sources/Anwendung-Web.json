@@ -1,0 +1,43 @@
+{
+  "file": "Anwendung-Web",
+  "title": "Anwendung · Web-Administration und Web-Prototyp",
+  "audience": "Für Administratoren, Reviewer und Auditoren",
+  "sections": [
+    [
+      "Welche Web-Anwendung ist gemeint?",
+      "<p><strong>Web-Administration:</strong> <code>https://IHRE-API/admin/</code> bzw. lokal <code>http://127.0.0.1:4300/admin/</code>. Diese Oberfläche arbeitet mit dem Backend und echten Daten der jeweils konfigurierten Datenbank.</p><p><strong>Web-Prototyp im Projektstamm:</strong> lokal <code>http://localhost:4173</code>, gestartet mit <code>npm start</code> aus dem Stammverzeichnis; Python muss vorhanden sein. Er demonstriert Lieferanten, Parzellen, Sendungen, Risiken und DDS-Vorbereitung. Er ist keine zweite, automatisch synchronisierte Darstellung der mobilen Backend-Daten. Bestehende SCTracker-Beschriftungen gehören zu diesem älteren Prototyp.</p>"
+    ],
+    [
+      "Anmelden und Organisation auswählen",
+      "<ol><li>Administrationsadresse im Browser öffnen.</li><li>E-Mail und Passwort eingeben. Bei Bedarf zusätzlich das Organisationskürzel eingeben.</li><li>Mit <strong>Anmelden</strong> bestätigen.</li><li>Unter <strong>Aktive Organisation</strong> den zulässigen Mandanten auswählen.</li><li>Vor jeder Änderung prüfen, ob die richtige Organisation angezeigt wird.</li></ol><p>Die angebotenen Registerkarten hängen von der Rolle ab. Ein Feldmitarbeiterkonto besitzt keine Web-Administrationsrechte. Ein Systemadministrator benötigt für mobile Feldarbeit ein gesondertes organisationsgebundenes Konto.</p><p>Die Oberfläche verwendet sitzungsbezogenen Browserspeicher für Token. Auf gemeinsam genutzten Geräten nach der Arbeit ausdrücklich <strong>Abmelden</strong>.</p>"
+    ],
+    [
+      "Organisation und Benutzer anlegen",
+      "<p>Als Systemadministrator links Name und Slug einer Organisation eingeben und <strong>Organisation anlegen</strong> wählen. Der Slug verwendet Kleinbuchstaben, Ziffern und Bindestriche. Über das Organisationsformular kann die Organisation später umbenannt oder deaktiviert werden.</p><ol><li>Die Zielorganisation auswählen.</li><li>Registerkarte <strong>Benutzer</strong> öffnen.</li><li>E-Mail, Anzeigename, Initialpasswort und Rolle eingeben.</li><li><strong>Benutzer anlegen</strong> wählen und den Eintrag kontrollieren.</li><li>Zugangsdaten über den vereinbarten sicheren Kanal bereitstellen. Die App versendet diese nicht automatisch per E-Mail.</li></ol><p>Passwörter benötigen mindestens zwölf Zeichen. Rollen, Aktivstatus und Passwortänderungen wirken auf bestehende Sitzungen. Das eigene Konto lässt sich nicht über die normale Bearbeitung selbst deaktivieren.</p>"
+    ],
+    [
+      "API- und EU-Einstellungen",
+      "<p>Unter <strong>API / EU</strong> konfigurieren Organisations- oder Systemadministratoren aktivierte Funktionen und externe Zugangsdaten. Leere Secret-Felder behalten den vorhandenen Wert; die jeweilige Löschen-Option entfernt ihn.</p><p>Den Modus <strong>Sicherer Mock</strong> für Entwicklung und Tests verwenden. Eine Mock-Referenz ist keine bestätigte externe Übermittlung. Live-Betrieb erst nach eigener fachlicher und technischer Abnahme einrichten. Das Aktivieren der Satellitenoption schaltet in diesem Stand keine reale Satellitenanalyse frei.</p>"
+    ],
+    [
+      "Geofences pflegen",
+      "<ol><li><strong>Geofences</strong> öffnen.</li><li>Name und ein gültiges GeoJSON-Polygon eingeben.</li><li><strong>Geofence anlegen</strong> wählen.</li><li>Bei bestehenden Grenzen Aktivstatus und Geometrie kontrolliert ändern.</li></ol><p>Koordinaten stehen im Format <code>[Längengrad, Breitengrad]</code>. Der letzte Punkt eines Rings muss dem ersten entsprechen. GPS-Punkte eines Feldes werden in der mobilen App erfasst; eine Organisationsgrenze wird hier administriert.</p><p>Die DDS-Prüfung verwendet die aktuell gültigen Grenzen für die ausdrücklich zugeordneten Flächen. Nach einer Grenzänderung kann deshalb eine erneute fachliche Prüfung erforderlich sein.</p>"
+    ],
+    [
+      "Freigaben bearbeiten",
+      "<p>Unter <strong>Freigaben</strong> stehen offene Geofence- und DDS-Prüfungen. Reviewer sowie Organisations- und Systemadministratoren können entsprechend ihrer Berechtigung entscheiden.</p><ol><li>Vorgang, Organisation und betroffene Fläche bzw. DDS prüfen.</li><li>Belege außerhalb und innerhalb des Systems kontrollieren.</li><li>Eine nachvollziehbare Bemerkung eingeben.</li><li>Freigeben oder ablehnen.</li><li>Die mobile Person über das Ergebnis informieren und erneut synchronisieren lassen.</li></ol><p>Eine Geofence-Ausnahme gilt für die geprüfte Geometrie. Eine geänderte Fläche ist nicht automatisch durch die alte Ausnahme freigegeben. Die Freigabe eines DDS ist von dessen anschließender Übermittlung getrennt.</p>"
+    ],
+    [
+      "Unklare DDS-Übermittlung klären",
+      "<p>Ein Netzabbruch kann bedeuten, dass der externe Dienst einen Vorgang angenommen hat, obwohl die Antwort nicht ankam. In diesem Fall blockiert Tracebackend eine erneute Übermittlung.</p><ol><li>Registerkarte <strong>DDS-Reconciliation</strong> öffnen.</li><li>Den Vorgang anhand seiner Kennungen beim externen Dienst prüfen.</li><li>Falls übermittelt: bestätigte externe Referenz eintragen und die Übermittlung bestätigen.</li><li>Nur wenn nachweislich nicht übermittelt: mit Begründung als nicht übermittelt zurücksetzen.</li><li>Danach Status in der mobilen App aktualisieren. Für eine neue Übermittlung wird eine neue Vorgangskennung benötigt.</li></ol><p>Laufende Vorgänge dürfen frühestens nach zwei Minuten geklärt werden. Diese Wartezeit ist keine Bestätigung, dass die Übermittlung fehlgeschlagen ist. Erneutes <strong>Validieren</strong> ersetzt den Klärungsprozess nicht.</p>"
+    ],
+    [
+      "Audit und typische Probleme",
+      "<p>Das Register <strong>Audit</strong> zeigt nachvollziehbare Änderungen der gewählten Organisation. Auditoren haben lesenden Zugang. Bei Rückfragen Vorgangskennung, Uhrzeit, Organisation und angezeigten Fehlercode nennen; keine Passwörter oder Token versenden.</p><table><thead><tr><th>Problem</th><th>Vorgehen</th></tr></thead><tbody><tr><td>Registerkarte fehlt</td><td>Rolle prüfen lassen; keine Berechtigung durch eine andere URL umgehen.</td></tr><tr><td>Anmeldung abgewiesen</td><td>E-Mail, Passwort, Organisationskürzel und Aktivstatus prüfen.</td></tr><tr><td>Zu viele Anfragen</td><td>Warten, unnötige Wiederholungen stoppen.</td></tr><tr><td>Vorgang bleibt ungeklärt</td><td>Externen Status prüfen; Administrationsentscheidung dokumentieren.</td></tr><tr><td>Dokument lässt sich nicht laden</td><td>Dokumentstatus, richtige Organisation und Objektablage administrativ prüfen.</td></tr></tbody></table>"
+    ],
+    [
+      "Web-Prototyp bedienen",
+      "<p>Der separate Prototyp bietet die Navigation <strong>Übersicht, Lieferanten, Parzellen, Sendungen, Risiko, DDS und Gebrauchsanweisung</strong>. Er dient zur Erkundung des fachlichen Ablaufs anhand des dortigen Datenstands.</p><ol><li>Mit <strong>Übersicht</strong> beginnen und den angezeigten Beispielvorgang prüfen.</li><li>Unter Lieferanten und Parzellen die Herkunft und Flächenzuordnung ansehen.</li><li>Unter Sendungen die dargestellte Lieferkette nachvollziehen.</li><li>Unter Risiko und DDS die demonstrierten Prüf- und Vorbereitungsschritte ansehen.</li></ol><div class=\"note\">Eine Anzeige oder Eingabe im Prototyp bestätigt weder eine Backend-Synchronisierung noch eine reale DDS-Übermittlung. Für die operative Benutzerverwaltung und Freigaben die Web-Administration verwenden.</div>"
+    ]
+  ]
+}

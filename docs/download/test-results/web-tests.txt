@@ -1,0 +1,17 @@
+✔ admin role matrix starts each role on an authorized tab (5.5801ms)
+✔ only administrator roles receive mutating organization controls (0.2343ms)
+✔ calculates rounded workflow completion (0.8832ms)
+✔ validates balanced coffee transformations (0.9618ms)
+✔ rejects unbalanced material lineage (0.1209ms)
+✔ keeps human review separate from numeric risk (0.1542ms)
+✔ all supported languages contain the same translation keys (2.8825ms)
+✔ translation lookup resolves German, English, and Amharic (0.2364ms)
+✔ all translation keys referenced by the web UI exist (16.6096ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 490.6549

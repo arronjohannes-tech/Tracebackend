@@ -1,0 +1,4 @@
+PASS: later writer waits until earlier tenant transaction commits; cursor sees both changes.
+PASS: rollback gaps do not lose committed changes.
+PASS: server revision comparison rejects stale edits independently of device time.
+Integration checks: 3 passed, 0 failed. Real PostgreSQL; migration 004 on minimal tables. PostGIS/full migration not covered.

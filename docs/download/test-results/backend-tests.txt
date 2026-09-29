@@ -1,0 +1,41 @@
+✔ organization selection follows the mobile authentication contract (8.4613ms)
+✔ organization header accepts only the JWT organization (4.7999ms)
+✔ CORS preflight allows X-Organization-Id (5995.0253ms)
+✔ GET /api/v1/geofences returns the active mobile shape (126.1038ms)
+✔ authenticate rejects a cross-tenant header before database access (39.6043ms)
+✔ uses network-accessible and local storage defaults outside Vercel (3.5112ms)
+✔ uses Vercel's writable temporary directory by default (0.5978ms)
+✔ DDS validate replays its persisted response and rejects cross-action key reuse (6053.417ms)
+✔ an uncertain DDS submit is persisted and the same key never calls SOAP twice (90.7458ms)
+✔ validate route cannot reset uncertain or processing DDS even with a new key (65.7805ms)
+✔ validation cannot reopen an uncertain or in-flight DDS submission (2.5277ms)
+✔ legacy DDS without explicit plot scope fails closed (0.2433ms)
+✔ GeoJSON polygons are range checked, closed, and deterministically hashed (4.5877ms)
+✔ SOAP envelope XML-escapes data (0.3922ms)
+✔ safe mock mode performs no network request (0.4629ms)
+✔ live SOAP mode rejects SSRF targets and accepts a valid response (210.6403ms)
+✔ live SOAP mode classifies ambiguous results for reconciliation (4.5101ms)
+✔ live SOAP mode distinguishes definitive service rejection from timeout (11.441ms)
+✔ critical HTTP controllers contain no SQL, filesystem or direct provider calls (154.8936ms)
+✔ business services do not depend on Fastify (9.4847ms)
+✔ mobile and admin routes reject unauthenticated access with the standard envelope (6131.5868ms)
+✔ unknown routes use the documented error envelope (56.8716ms)
+✔ admin SPA is served with restrictive browser headers (68.8127ms)
+✔ passwords use Argon2id and verify safely (1744.3678ms)
+✔ access tokens preserve tenant and role claims (112.6898ms)
+✔ refresh tokens are high entropy and do not expose their hash (2.7279ms)
+✔ configuration secrets round-trip through authenticated encryption (15.7302ms)
+✔ the identical geofence-blocked sync retry is accepted after approval and pulled as approved (6305.9729ms)
+✔ approved geofence exceptions produce authoritative mobile plot fields (118.8805ms)
+✔ DDS idempotency keys are bound to one operation and action (3.433ms)
+✔ DDS action replay returns stored results and never retries ambiguous actions (1.6256ms)
+✔ migration runner establishes system RLS context before migration queries (1.7277ms)
+✔ DDS action migration defines durable tenant-scoped persistence (59.7195ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16267.9073

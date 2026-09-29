@@ -1,0 +1,21 @@
+✔ login forwards the optional organization slug (229.5824ms)
+✔ transient refresh failures preserve the session and revoked tokens clear it (2.5028ms)
+✔ closePolygon produces a closed GeoJSON polygon (1.5334ms)
+✔ parsePolygon rejects malformed geometry (1.5215ms)
+✔ polygon validation rejects coordinate ranges, open rings, zero area and self intersections (0.317ms)
+✔ pointInPolygon includes boundary and excludes holes (0.9469ms)
+✔ local geofence precheck is pending, inside, or outside (0.3701ms)
+✔ UUID identifiers have RFC 4122 version and variant bits (0.4645ms)
+✔ state keys isolate users and organizations during tenant switches (1.008ms)
+✔ unscoped legacy values are quarantined and every authenticated scope starts empty (9.7137ms)
+✔ active legacy keys remain when quarantine persistence fails (0.5475ms)
+✔ structured geofence review pauses only the outside plot and pushes the remaining batch (200.6922ms)
+✔ invalid geofence review details leave the batch and plots unchanged (2.0798ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2181.6962
