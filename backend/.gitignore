@@ -1,5 +1,6 @@
 node_modules/
 dist/
+admin/
 storage/
 .bootstrap-admin-password
 .env
