@@ -9,9 +9,35 @@ const state = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+const AUTH_REFRESH_PATH = "api/v1/auth/refresh";
+const apiBaseUrl = resolveApiBaseUrl();
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+function normalizePath(path) {
+  if (/^https?:\/\//i.test(path)) {
+    return new URL(path).pathname.replace(/^\/+/, "");
+  }
+  return String(path).replace(/^\/+/, "");
+}
+
+function buildApiUrl(path) {
+  const normalizedPath = normalizePath(path);
+  return new URL(normalizedPath, `${apiBaseUrl}/`).toString();
+}
+
+function normalizeBaseUrl(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = new URL(value.trim(), window.location.origin);
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function resolveApiBaseUrl() {
+  const configuredBaseUrl = normalizeBaseUrl(window.TRACEBACKEND_API_BASE_URL) ??
+    normalizeBaseUrl(document.querySelector("meta[name='tracebackend-api-base-url']")?.content);
+  return configuredBaseUrl ?? window.location.origin;
+}
 
 function message(text, error = false) {
   const element = $("#message");
@@ -21,7 +47,9 @@ function message(text, error = false) {
 }
 
 async function api(path, options = {}, retry = true) {
-  const response = await fetch(path, {
+  const requestUrl = buildApiUrl(path);
+  const normalizedPath = normalizePath(path);
+  const response = await fetch(requestUrl, {
     ...options,
     headers: {
       Accept: "application/json",
@@ -31,7 +59,7 @@ async function api(path, options = {}, retry = true) {
     },
   });
   const body = await response.json().catch(() => null);
-  if (response.status === 401 && retry && state.refreshToken && path !== "/api/v1/auth/refresh") {
+  if (response.status === 401 && retry && state.refreshToken && normalizedPath !== AUTH_REFRESH_PATH) {
     const refreshed = await api("/api/v1/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken: state.refreshToken }),
@@ -42,6 +70,9 @@ async function api(path, options = {}, retry = true) {
     }
   }
   if (!response.ok || !body?.data) {
+    if (response.status === 404 && normalizedPath.startsWith("api/")) {
+      throw new Error(`API-Endpunkt nicht gefunden (${requestUrl}). Bitte die Backend-URL prüfen.`);
+    }
     throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
   }
   return body.data;

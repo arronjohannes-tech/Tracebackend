@@ -23,6 +23,10 @@ database role.
 After the first migration, remove `BOOTSTRAP_ADMIN_PASSWORD` from `.env`. The static
 admin SPA is served at `http://127.0.0.1:4300/admin/`.
 
+If the admin SPA is hosted on a different origin than the API, set
+`<meta name="tracebackend-api-base-url" content="https://your-backend.example.com">`
+in `admin/index.html`. Without this, the SPA calls `/api/...` on its own origin.
+
 ## Provisioned Neon database
 
 The dedicated `sctracker_asteros` database is provisioned in the existing Neon
