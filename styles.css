@@ -1168,6 +1168,138 @@ tr:last-child td {
   }
 }
 
+.production-hidden,
+[hidden] {
+  display: none !important;
+}
+
+.auth-gate {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(61, 151, 173, 0.22), transparent 30rem),
+    #07131f;
+}
+
+.auth-card {
+  width: min(100%, 430px);
+  padding: 34px;
+  border: 1px solid rgba(126, 221, 237, 0.3);
+  border-radius: 7px;
+  background: rgba(13, 32, 48, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin-bottom: 10px;
+  font-size: 2.2rem;
+}
+
+.auth-card > p:not(.eyebrow):not(.auth-status) {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.auth-card form {
+  display: grid;
+  gap: 14px;
+  margin-top: 26px;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.auth-card input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: 0;
+  color: var(--ink);
+  background: rgba(7, 19, 31, 0.75);
+  font-size: 0.9rem;
+}
+
+.auth-card input:focus {
+  border-color: var(--lime);
+  box-shadow: 0 0 0 3px rgba(159, 231, 255, 0.12);
+}
+
+.auth-status {
+  min-height: 1.4em;
+  margin: 18px 0 0;
+  color: var(--amber);
+  font-size: 0.78rem;
+}
+
+.production-table {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.production-table .lineage-node {
+  min-width: 0;
+}
+
+.live-empty {
+  grid-column: 1 / -1;
+  padding: 22px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  text-align: center;
+}
+
+.capability-notice {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--amber);
+  color: var(--muted);
+  background: rgba(255, 197, 107, 0.08);
+  font-size: 0.78rem;
+}
+
+html[data-layout="classic"] .auth-gate {
+  background: #f5f3ed;
+}
+
+html[data-layout="classic"] .auth-card {
+  border-color: #dedfd8;
+  color: #14251d;
+  background: #fffefa;
+}
+
+html[data-layout="classic"] .auth-card input {
+  color: #14251d;
+  background: #f5f3ed;
+}
+
+@media (max-width: 760px) {
+  .production-table {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-card {
+    padding: 26px 20px;
+  }
+
+  .production-table {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Alternative command-deck skin shared by every frontpage view. */
 :root {
   --ink: #e7f3f5;

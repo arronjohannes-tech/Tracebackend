@@ -33,6 +33,7 @@ const schema = z.object({
   S3_BUCKET: z.string().min(1).optional(),
   S3_REGION: z.string().default("eu-central-1").optional(),
   S3_ENDPOINT: z.string().url().optional(),
+  AWS_ENDPOINT_URL_S3: z.string().url().optional(),
   ADMIN_ORIGIN: z.string().default("http://127.0.0.1:4300"),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).optional(),
@@ -55,6 +56,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   if (parsed.NODE_ENV === "production" && parsed.S3_ENDPOINT && !parsed.S3_ENDPOINT.startsWith("https://")) throw new Error("Production object storage must use HTTPS.");
   return {
     ...parsed,
+    S3_ENDPOINT: parsed.S3_ENDPOINT ?? parsed.AWS_ENDPOINT_URL_S3,
     PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL.replace(/\/+$/, ""),
     STORAGE_DIR: path.resolve(process.cwd(), parsed.STORAGE_DIR),
   };

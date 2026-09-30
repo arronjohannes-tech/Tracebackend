@@ -13,6 +13,7 @@ import { registerAdminRoutes } from "./routes/admin.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerOperationRoutes } from "./routes/operations.js";
 import { registerSyncRoutes } from "./routes/sync.js";
+import { registerDashboardRoutes } from "./controllers/dashboard-controller.js";
 
 export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyInstance> {
   const app = Fastify({
@@ -96,6 +97,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
 
   const authenticate = createAuthenticator(pool, config);
   await registerAuthRoutes(app, pool, config, authenticate);
+  await registerDashboardRoutes(app, pool, config, authenticate);
   await registerAdminRoutes(app, pool, config, authenticate);
   await registerSyncRoutes(app, pool, authenticate);
   await registerDocumentRoutes(app, pool, config, authenticate);

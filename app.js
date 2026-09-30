@@ -32,6 +32,11 @@ const accountDropdown = document.querySelector("#account-dropdown");
 const profileDialog = document.querySelector("#profile-dialog");
 const layoutToggle = document.querySelector("#layout-toggle");
 const layoutLabel = document.querySelector("#layout-label");
+const authGate = document.querySelector("#auth-gate");
+const appShell = document.querySelector("#app-shell");
+const loginForm = document.querySelector("#tracehub-login-form");
+const authStatus = document.querySelector("#auth-status");
+let dashboardData = null;
 let toastTimer;
 let activeLanguage = getInitialLanguage();
 
@@ -52,6 +57,10 @@ function getInitialLanguage() {
 }
 
 function renderDynamicContent() {
+  if (dashboardData) {
+    renderLiveDashboard(dashboardData);
+    return;
+  }
   const t = (key) => translate(activeLanguage, key);
   const lineage = [
     {
@@ -135,6 +144,153 @@ function renderDynamicContent() {
     .join("");
 }
 
+function setAuthMessage(text = "") {
+  if (authStatus) authStatus.textContent = text;
+}
+
+function currentAccessToken() {
+  return sessionStorage.getItem("accessToken");
+}
+
+function selectedOrganizationId() {
+  return sessionStorage.getItem("selectedOrganizationId");
+}
+
+function saveSession(payload) {
+  sessionStorage.setItem("accessToken", payload.accessToken);
+  sessionStorage.setItem("refreshToken", payload.refreshToken);
+  if (payload.selectedOrganizationId) sessionStorage.setItem("selectedOrganizationId", payload.selectedOrganizationId);
+}
+
+async function refreshSession() {
+  const refreshToken = sessionStorage.getItem("refreshToken");
+  if (!refreshToken) return false;
+  const response = await fetch("/api/v1/auth/refresh", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!response.ok) return false;
+  saveSession((await response.json()).data);
+  return true;
+}
+
+async function dashboardRequest() {
+  const headers = {
+    Accept: "application/json",
+    ...(currentAccessToken() ? { Authorization: `Bearer ${currentAccessToken()}` } : {}),
+    ...(selectedOrganizationId() ? { "X-Organization-Id": selectedOrganizationId() } : {}),
+  };
+  let response = await fetch("/api/v1/dashboard", { headers });
+  if (response.status === 401 && await refreshSession()) {
+    response = await fetch("/api/v1/dashboard", {
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${currentAccessToken()}`,
+      },
+    });
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.data) {
+    throw new Error(body?.error?.message ?? `Dashboard request failed (${response.status}).`);
+  }
+  return body.data;
+}
+
+function showAuthenticatedApp() {
+  authGate?.classList.add("production-hidden");
+  appShell?.classList.remove("production-hidden");
+}
+
+function showLogin() {
+  dashboardData = null;
+  authGate?.classList.remove("production-hidden");
+  appShell?.classList.add("production-hidden");
+}
+
+function renderLiveDashboard(data) {
+  const setText = (selector, value) => {
+    const element = document.querySelector(selector);
+    if (element) element.textContent = String(value);
+  };
+  setText("#metric-suppliers", data.supplierCount);
+  setText("#metric-plots", data.plotCount);
+  setText("#metric-reviews", data.openReviewCount);
+  setText("#metric-documents", data.documentCount);
+  setText("#overview-title", `Organization dashboard`);
+  setText("#overview-route", `Live data · ${data.organizationId} · ${new Date(data.generatedAt).toLocaleString()}`);
+  const supplierBody = document.querySelector("#suppliers-body");
+  if (supplierBody) {
+    supplierBody.innerHTML = data.suppliers.length
+      ? data.suppliers.map((supplier) => `<tr><td><strong>${escapeHtml(supplier.name)}</strong><small>${escapeHtml(supplier.id)}</small></td><td>${escapeHtml(supplier.region)}</td><td>${supplier.producerCount}</td><td>${supplier.plotCount}</td><td><span class="badge success">Live</span></td><td>${escapeHtml(new Date(supplier.updatedAt).toLocaleString())}</td></tr>`).join("")
+      : `<tr><td colspan="6"><div class="live-empty">No supplier data is available for this organization.</div></td></tr>`;
+  }
+  const lineage = document.querySelector("#lineage");
+  if (lineage) {
+    lineage.innerHTML = data.plots.length
+      ? data.plots.slice(0, 4).map((plot) => `<div class="lineage-node"><small>${escapeHtml(plot.geofenceStatus)}</small><strong>${escapeHtml(plot.farmName)}</strong><em>${escapeHtml(plot.producer)} · ${escapeHtml(plot.areaHa)} ha</em></div>`).join("")
+      : `<div class="live-empty">No plot data is available for this organization.</div>`;
+  }
+  const worklist = document.querySelector("#worklist");
+  if (worklist) {
+    worklist.innerHTML = data.operations.length
+      ? data.operations.slice(0, 6).map((operation) => `<li><span class="task-priority ${operation.status === "failed" ? "high" : "low"}"></span><div><strong>${escapeHtml(operation.kind)}</strong><small>${escapeHtml(operation.status)} · ${escapeHtml(operation.phase ?? "queued")}</small></div></li>`).join("")
+      : `<li><div><strong>No operational requests</strong><small>Live workspace is clear.</small></div></li>`;
+  }
+  const plotsLayout = document.querySelector("#plots-layout");
+  if (plotsLayout) {
+    plotsLayout.innerHTML = `<article class="panel"><p class="eyebrow">LIVE PLOTS</p><div class="production-table">${data.plots.length ? data.plots.slice(0, 12).map((plot) => `<div class="lineage-node"><small>${escapeHtml(plot.geofenceStatus)}</small><strong>${escapeHtml(plot.farmName)}</strong><em>${escapeHtml(plot.producer)} · ${escapeHtml(plot.areaHa)} ha</em></div>`).join("") : '<div class="live-empty">No plot data is available for this organization.</div>'}</div></article><article class="panel"><p class="eyebrow">DATA CAPABILITY</p><h3>Geofence status</h3><p class="muted">Plot geofence state is read from the backend and is not replaced with a local estimate.</p></article>`;
+  }
+  const unsupportedViews = ["shipments", "risk", "dds"];
+  unsupportedViews.forEach((viewId) => {
+    const link = document.querySelector(`[data-view="${viewId}"]`);
+    const section = document.querySelector(`#${viewId}`);
+    const supported = data.capabilities[viewId === "risk" ? "riskSignals" : viewId === "shipments" ? "shipments" : "dds"];
+    link?.classList.toggle("hidden", !supported);
+    section?.classList.toggle("hidden", !supported);
+  });
+}
+
+async function loadProductionDashboard() {
+  setAuthMessage("Loading secure workspace…");
+  try {
+    if (!currentAccessToken()) throw new Error("Sign in required.");
+    dashboardData = await dashboardRequest();
+    showAuthenticatedApp();
+    setAuthMessage("");
+    renderLiveDashboard(dashboardData);
+  } catch (error) {
+    sessionStorage.clear();
+    showLogin();
+    setAuthMessage(error.message);
+  }
+}
+
+loginForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(loginForm);
+  const payload = {
+    email: form.get("email"),
+    password: form.get("password"),
+    ...(form.get("organizationSlug") ? { organizationSlug: form.get("organizationSlug") } : {}),
+  };
+  setAuthMessage("Authenticating…");
+  try {
+    const response = await fetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.data) throw new Error(body?.error?.message ?? "Login failed.");
+    saveSession(body.data);
+    await loadProductionDashboard();
+  } catch (error) {
+    sessionStorage.clear();
+    setAuthMessage(error.message);
+  }
+});
+
 function showView(viewId) {
   const selected = views.find((view) => view.id === viewId) ?? views[0];
 
@@ -202,6 +358,8 @@ async function logoutFromBackend() {
 
   sessionStorage.removeItem("accessToken");
   sessionStorage.removeItem("refreshToken");
+  sessionStorage.removeItem("selectedOrganizationId");
+  showLogin();
   toast.textContent = serverLogoutFailed
     ? "Lokal abgemeldet; Server war nicht erreichbar"
     : "Sitzung beendet";
@@ -272,3 +430,4 @@ if (!balance.balanced) {
 
 setLayout(localStorage.getItem("sctracker.layout") ?? "command");
 setLanguage(activeLanguage);
+loadProductionDashboard();
