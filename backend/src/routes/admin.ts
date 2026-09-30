@@ -36,6 +36,9 @@ const userPatchSchema = z.object({
   role: z.enum(roles).exclude(["system_admin"]).optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0);
+const adminUserQuerySchema = z.object({
+  organizationId: uuidSchema.optional(),
+});
 const configSchema = z.object({
   satelliteEnabled: z.boolean(),
   satelliteEndpoint: z.string().url().nullable().default(null),
@@ -171,9 +174,27 @@ export async function registerAdminRoutes(
     return sendData(reply, organization);
   });
 
-  app.get("/api/v1/admin/organizations/:organizationId/users", protectedRoute, async (request, reply) => {
-    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
-    ensureOrgAdministration(request, organizationId);
+  const resolveManagedOrganizationId = (
+    request: FastifyRequest,
+    organizationIdFromPath?: string,
+  ) => {
+    requireRoles(request, ["system_admin", "org_admin"]);
+    const { organizationId: organizationIdFromQuery } = parse(adminUserQuerySchema, request.query);
+    if (organizationIdFromPath && organizationIdFromQuery && organizationIdFromPath !== organizationIdFromQuery) {
+      throw badRequest(
+        "ORGANIZATION_MISMATCH",
+        "organizationId in query must match the organizationId in the path.",
+      );
+    }
+    return organizationFor(request, organizationIdFromPath ?? organizationIdFromQuery);
+  };
+
+  const listOrganizationUsers = async (
+    request: FastifyRequest,
+    reply: Parameters<typeof sendData>[0],
+    organizationIdFromPath?: string,
+  ) => {
+    const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
     const users = await withContext(pool, auth, (client) =>
       queryMany(client,
@@ -182,11 +203,14 @@ export async function registerAdminRoutes(
            FROM users WHERE organization_id = $1 ORDER BY email`,
         [organizationId]));
     return sendData(reply, users);
-  });
+  };
 
-  app.post("/api/v1/admin/organizations/:organizationId/users", protectedRoute, async (request, reply) => {
-    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
-    ensureOrgAdministration(request, organizationId);
+  const createOrganizationUser = async (
+    request: FastifyRequest,
+    reply: Parameters<typeof sendData>[0],
+    organizationIdFromPath?: string,
+  ) => {
+    const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
     const body = parse(userSchema, request.body);
     const passwordHash = await hashPassword(body.password);
@@ -205,14 +229,15 @@ export async function registerAdminRoutes(
       return result;
     });
     return sendData(reply, user, 201);
-  });
+  };
 
-  app.patch("/api/v1/admin/organizations/:organizationId/users/:userId", protectedRoute, async (request, reply) => {
-    const { organizationId, userId } = parse(
-      z.object({ organizationId: uuidSchema, userId: uuidSchema }),
-      request.params,
-    );
-    ensureOrgAdministration(request, organizationId);
+  const updateOrganizationUser = async (
+    request: FastifyRequest,
+    reply: Parameters<typeof sendData>[0],
+    userId: string,
+    organizationIdFromPath?: string,
+  ) => {
+    const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
     const body = parse(userPatchSchema, request.body);
     if (userId === auth.userId && body.active === false) {
@@ -257,6 +282,35 @@ export async function registerAdminRoutes(
       return result;
     });
     return sendData(reply, user);
+  };
+
+  app.get("/api/v1/admin/organizations/:organizationId/users", protectedRoute, async (request, reply) => {
+    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
+    return listOrganizationUsers(request, reply, organizationId);
+  });
+
+  app.get("/api/v1/admin/users", protectedRoute, async (request, reply) =>
+    listOrganizationUsers(request, reply));
+
+  app.post("/api/v1/admin/organizations/:organizationId/users", protectedRoute, async (request, reply) => {
+    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
+    return createOrganizationUser(request, reply, organizationId);
+  });
+
+  app.post("/api/v1/admin/users", protectedRoute, async (request, reply) =>
+    createOrganizationUser(request, reply));
+
+  app.patch("/api/v1/admin/organizations/:organizationId/users/:userId", protectedRoute, async (request, reply) => {
+    const { organizationId, userId } = parse(
+      z.object({ organizationId: uuidSchema, userId: uuidSchema }),
+      request.params,
+    );
+    return updateOrganizationUser(request, reply, userId, organizationId);
+  });
+
+  app.patch("/api/v1/admin/users/:userId", protectedRoute, async (request, reply) => {
+    const { userId } = parse(z.object({ userId: uuidSchema }), request.params);
+    return updateOrganizationUser(request, reply, userId);
   });
 
   app.get("/api/v1/admin/organizations/:organizationId/config", protectedRoute, async (request, reply) => {

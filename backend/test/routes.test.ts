@@ -34,6 +34,9 @@ test("mobile and admin routes reject unauthenticated access with the standard en
       { method: "POST", url: "/api/v1/dds/drafts", payload: {} },
       { method: "GET", url: "/api/v1/geofences" },
       { method: "GET", url: "/api/v1/admin/organizations" },
+      { method: "GET", url: "/api/v1/admin/users" },
+      { method: "POST", url: "/api/v1/admin/users", payload: {} },
+      { method: "PATCH", url: "/api/v1/admin/users/550e8400-e29b-41d4-a716-446655440000", payload: {} },
     ] as const) {
       const response = await app.inject(request);
       assert.equal(response.statusCode, 401, `${request.method} ${request.url}`);
@@ -64,7 +67,7 @@ test("admin SPA is served with restrictive browser headers", async () => {
   try {
     const response = await app.inject({ method: "GET", url: "/admin/" });
     assert.equal(response.statusCode, 200);
-    assert.match(response.body, /SCTracker Administration/);
+    assert.match(response.body, /(SCTracker|Tracebackend) Administration/);
     assert.match(response.headers["content-security-policy"] ?? "", /default-src 'self'/);
     assert.equal(response.headers["x-frame-options"], "DENY");
     const roles = await app.inject({ method: "GET", url: "/admin/roles.js" });

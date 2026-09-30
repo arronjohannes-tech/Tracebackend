@@ -90,6 +90,7 @@ using those workflows in production.
 | POST | `/api/v1/dds/drafts/:id/validate` | Validate draft |
 | POST | `/api/v1/dds/drafts/:id/submit` | Submit only after review approval |
 | GET/POST/PATCH | `/api/v1/admin/organizations...` | Organizations, users, config, geofences |
+| GET/POST/PATCH | `/api/v1/admin/users[/:userId]?organizationId=...` | Legacy compatibility aliases for organization-scoped user management |
 | GET | `/api/v1/admin/organizations/:id/reviews` | Geofence and DDS review queue |
 | POST | `/api/v1/admin/reviews/:type/:id/decision` | Approve/reject review |
 | GET | `/api/v1/admin/organizations/:id/dds-reconciliation` | Uncertain/in-progress DDS submissions requiring an explicit decision |
@@ -113,6 +114,12 @@ match the organization claim in the access token; a mismatch returns HTTP 403
 `ORGANIZATION_MISMATCH`. Login and refresh return `organizations: [{id,name}]`
 plus `selectedOrganizationId`; organization users receive their one active
 organization, while system administrators receive an empty list and `null`.
+
+All `/api/v1/admin/*` endpoints require `Authorization: Bearer <accessToken>`.
+The organization-scoped user routes are available both as
+`/api/v1/admin/organizations/:organizationId/users...` and legacy aliases
+`/api/v1/admin/users...?organizationId=<uuid>`. For non-system users, the
+organization id is derived from the token and cross-organization access is denied.
 
 Satellite and EU API keys are encrypted with AES-256-GCM; their GET representation
 contains only `has...` flags. Arbitrary `extra` settings reject secret-like keys.
