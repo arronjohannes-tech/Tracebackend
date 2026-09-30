@@ -27,6 +27,11 @@ const navLinks = [...document.querySelectorAll(".nav-link")];
 const pageTitle = document.querySelector("#page-title");
 const toast = document.querySelector("#toast");
 const languageButtons = [...document.querySelectorAll("[data-language]")];
+const accountToggle = document.querySelector("#account-toggle");
+const accountDropdown = document.querySelector("#account-dropdown");
+const profileDialog = document.querySelector("#profile-dialog");
+const layoutToggle = document.querySelector("#layout-toggle");
+const layoutLabel = document.querySelector("#layout-label");
 let toastTimer;
 let activeLanguage = getInitialLanguage();
 
@@ -159,6 +164,86 @@ function setLanguage(language) {
   });
 }
 
+function setLayout(layout) {
+  const nextLayout = layout === "classic" ? "classic" : "command";
+  document.documentElement.dataset.layout = nextLayout;
+  localStorage.setItem("sctracker.layout", nextLayout);
+  layoutToggle?.setAttribute("aria-pressed", String(nextLayout === "command"));
+  if (layoutLabel) layoutLabel.textContent = nextLayout === "command" ? "COMMAND" : "CLASSIC";
+}
+
+function closeAccountMenu() {
+  if (!accountDropdown || !accountToggle) return;
+  accountDropdown.hidden = true;
+  accountToggle.setAttribute("aria-expanded", "false");
+}
+
+async function logoutFromBackend() {
+  const accessToken = sessionStorage.getItem("accessToken");
+  const refreshToken = sessionStorage.getItem("refreshToken");
+  let serverLogoutFailed = false;
+
+  if (refreshToken) {
+    try {
+      const response = await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ refreshToken }),
+      });
+      serverLogoutFailed = !response.ok && response.status !== 401;
+    } catch {
+      serverLogoutFailed = true;
+    }
+  }
+
+  sessionStorage.removeItem("accessToken");
+  sessionStorage.removeItem("refreshToken");
+  toast.textContent = serverLogoutFailed
+    ? "Lokal abgemeldet; Server war nicht erreichbar"
+    : "Sitzung beendet";
+  toast.classList.add("visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("visible"), 3200);
+}
+
+accountToggle?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const isOpen = !accountDropdown.hidden;
+  accountDropdown.hidden = isOpen;
+  accountToggle.setAttribute("aria-expanded", String(!isOpen));
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".account-menu")) closeAccountMenu();
+});
+
+document.querySelectorAll("[data-account-action]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    closeAccountMenu();
+    if (button.dataset.accountAction === "profile") {
+      profileDialog?.showModal();
+      return;
+    }
+    await logoutFromBackend();
+  });
+});
+
+document.querySelectorAll("[data-profile-close]").forEach((button) => {
+  button.addEventListener("click", () => profileDialog?.close());
+});
+
+profileDialog?.addEventListener("click", (event) => {
+  if (event.target === profileDialog) profileDialog.close();
+});
+
+layoutToggle?.addEventListener("click", () => {
+  setLayout(document.documentElement.dataset.layout === "command" ? "classic" : "command");
+});
+
 navLinks.forEach((link) => {
   link.addEventListener("click", (event) => {
     event.preventDefault();
@@ -185,4 +270,5 @@ if (!balance.balanced) {
   console.warn("Demo shipment mass balance is not balanced", balance);
 }
 
+setLayout(localStorage.getItem("sctracker.layout") ?? "command");
 setLanguage(activeLanguage);

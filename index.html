@@ -76,11 +76,25 @@
               <span data-i18n="header.mobileTest">Mobile testen</span>
               <strong data-i18n="header.pdfChecklist">PDF-Checkliste</strong>
             </a>
+            <button class="layout-toggle" id="layout-toggle" type="button" aria-pressed="true" title="Layout wechseln">
+              <span class="layout-toggle-dot" aria-hidden="true"></span>
+              <span id="layout-label">COMMAND</span>
+            </button>
             <span class="deadline">
               <small data-i18n="header.applicationStart">Anwendungsstart</small>
               <strong data-i18n="header.date">30. Dez. 2026</strong>
             </span>
-            <button class="avatar" aria-label="Benutzermenü" data-i18n-aria-label="aria.userMenu">AJ</button>
+            <div class="account-menu">
+              <button class="avatar" id="account-toggle" type="button" aria-label="Benutzermenü" aria-expanded="false" aria-controls="account-dropdown" data-i18n-aria-label="aria.userMenu">AJ</button>
+              <div class="account-dropdown" id="account-dropdown" hidden>
+                <div class="account-summary">
+                  <strong>Arron Johannes</strong>
+                  <small>System Administrator</small>
+                </div>
+                <button type="button" data-account-action="profile">Profile</button>
+                <button type="button" data-account-action="logout">Logout</button>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -422,6 +436,23 @@
         </section>
       </main>
     </div>
+
+    <dialog class="profile-dialog" id="profile-dialog" aria-labelledby="profile-title">
+      <div class="profile-dialog-header">
+        <div>
+          <p class="eyebrow">IDENTITY NODE</p>
+          <h2 id="profile-title">Profile</h2>
+        </div>
+        <button class="dialog-close" type="button" data-profile-close aria-label="Profile schließen">×</button>
+      </div>
+      <div class="profile-grid">
+        <div><span>NAME</span><strong>Arron Johannes</strong></div>
+        <div><span>ROLE</span><strong>System Administrator</strong></div>
+        <div><span>ACCESS</span><strong class="access-state">AUTHENTICATED</strong></div>
+        <div><span>SESSION</span><strong>Tracebackend Demo</strong></div>
+      </div>
+      <button class="primary-button full" type="button" data-profile-close>Close profile</button>
+    </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="app.js?v=1"></script>
