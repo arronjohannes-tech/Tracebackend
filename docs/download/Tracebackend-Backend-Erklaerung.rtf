@@ -1,0 +1,82 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Calibri;}{\f1 Consolas;}}
+\viewkind4\uc1
+\pard\sa240\qc\b\fs32 Rolle von Tracebackend/backend\b0\fs24\par
+\pard\sa180\qc\i Technische Erklaerung fuer Admin, Backend, Vercel und Neon\i0\par
+\pard\sa240\qj
+\b 1. Ueberblick\b0\par
+Tracebackend/backend ist der zentrale Server des Projekts. Der Ordner enthaelt die Fastify-API, die Authentifizierung, die Geschaeftslogik, den Datenbankzugriff und die Datenbankmigrationen. Die Admin-Oberflaeche ist nur der Client und sendet ihre Anfragen an dieses Backend.\par
+\par
+\b 2. Datenfluss\b0\par
+\f1 Browser / tracehub-meloy.vercel.app\f0\par
+\tab |\par
+\tab | HTTPS API-Aufruf, zum Beispiel /api/v1/auth/login\par
+\tab v\par
+\f1 Tracebackend Backend / backend-meloy.vercel.app\f0\par
+\tab |\par
+\tab | PostgreSQL-Verbindung ueber DATABASE_URL\par
+\tab v\par
+\f1 Neon PostgreSQL / sctracker_asteros\f0\par
+\par
+Der Browser darf nicht direkt auf die Neon-REST-API fuer den Tracebackend-Login zugreifen. Neon ist die Datenbank des Backends, nicht der API-Endpunkt der Admin-Anwendung.\par
+\par
+\b 3. Aufgaben von backend\b0\par
+\bullet Authentifizierung und JWT-/Refresh-Token-Verwaltung\par
+\bullet Rollen und Berechtigungen fuer System- und Organisationsadministratoren\par
+\bullet REST-Endpunkte unter /api/v1/\par
+\bullet Organisationen, Benutzer, Geofences und Audit-Logs\par
+\bullet Mobile Synchronisation\par
+\bullet Dokumente, Uploads und DDS/EUDR-Prozesse\par
+\bullet PostgreSQL-/Neon-Datenzugriff\par
+\bullet Datenbankmigrationen aus backend/migrations\par
+\bullet CORS-Freigabe fuer die Admin-Origin\par
+\par
+\b 4. Wichtige Dateien\b0\par
+\f1 backend/src/server.ts\f0\par
+Startet den Fastify-Server.\par
+\f1 backend/src/application.ts\f0\par
+Registriert CORS, Routen, Middleware und die Admin-Dateien.\par
+\f1 backend/src/controllers/auth-controller.ts\f0\par
+Stellt Login-, Refresh- und Logout-Routen bereit.\par
+\f1 backend/src/services/auth-service.ts\f0\par
+Enthaelt die Login- und Token-Logik.\par
+\f1 backend/src/migrate.ts\f0\par
+Fuehrt noch nicht angewendete SQL-Migrationen aus.\par
+\f1 admin/index.html\f0\par
+Enthaelt die API-Basis-URL fuer die Admin-Oberflaeche.\par
+\par
+\b 5. Vercel-Konfiguration\b0\par
+\b Backend-Projekt: backend-meloy\b0\par
+Root Directory:\tab \f1 backend\f0\par
+Production-Variable ADMIN_ORIGIN:\tab \f1 https://tracehub-meloy.vercel.app,https://tracehub-ten.vercel.app\f0\par
+DATABASE_URL:\tab Neon-Pooled-Connection-String\par
+DATABASE_SSL:\tab \f1 true\f0\par
+NODE_ENV:\tab \f1 production\f0\par
+PUBLIC_BASE_URL:\tab \f1 https://backend-meloy.vercel.app\f0\par
+\par
+\b Admin-Projekt: tracehub-meloy\b0\par
+Die Admin-Anwendung muss als API-Basis verwenden:\par
+\f1 https://backend-meloy.vercel.app\f0\par
+\par
+Die API-Basis darf nicht auf eine Neon-REST-URL zeigen. Nach jeder Aenderung an Production-Variablen muss das Backend neu deployed werden.\par
+\par
+\b 6. CORS und Login\b0\par
+Der Browser sendet vor dem Login einen OPTIONS-Preflight an das Backend. Das Backend antwortet nur dann mit Access-Control-Allow-Origin, wenn der Origin in ADMIN_ORIGIN enthalten ist. Die Schreibweise muss exakt stimmen; ein abschliessender Schraegstrich darf nicht verwendet werden.\par
+\par
+Beispiel:\par
+\f1 ADMIN_ORIGIN=https://tracehub-meloy.vercel.app,https://tracehub-ten.vercel.app\f0\par
+\par
+Wenn der Preflight weiterhin mit 401 oder ohne Access-Control-Allow-Origin antwortet, ist entweder das Vercel-Production-Deployment veraltet, die Variable wurde im falschen Vercel-Projekt gesetzt oder eine Vercel-Deployment-Protection blockiert OPTIONS-Anfragen.\par
+\par
+\b 7. Datenbankmigrationen\b0\par
+Migrationen muessen gegen die Neon-Datenbank ausgefuehrt werden, nicht gegen eine lokale Datenbank. Der Befehl lautet:\par
+\f1 cd backend\par
+npm run migrate\f0\par
+\par
+Der Runner fuehrt nur fehlende Migrationen aus. DATABASE_URL muss dabei auf Neon zeigen und der verwendete Datenbankbenutzer muss ausreichende Rechte fuer das Schema public besitzen.\par
+\par
+\b 8. Kurzfassung\b0\par
+Tracehub ist die Benutzeroberflaeche. Tracebackend/backend ist die API und die Sicherheits- sowie Geschaeftslogik. Neon ist die Datenbank. Die korrekte Verbindung lautet daher:\par
+\par
+\f1 Tracehub Admin -> Tracebackend Backend -> Neon PostgreSQL\f0\par
+}
