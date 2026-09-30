@@ -19,7 +19,8 @@
       <form id="tracehub-login-form">
         <label>Email<input name="email" type="email" autocomplete="username" required></label>
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
-        <label>Organization slug <input name="organizationSlug" autocomplete="organization" placeholder="for organization accounts"></label>
+        <label>Organization slug <input name="organizationSlug" autocomplete="organization"
+            placeholder="for organization accounts"></label>
         <button class="primary-button full" type="submit">Sign in</button>
       </form>
       <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
@@ -114,8 +115,8 @@
         <div class="hero">
           <div>
             <p class="eyebrow light" data-i18n="overview.activeShipment">AKTIVE KAFFEE-SENDUNG</p>
-              <h2 id="overview-title">Production dashboard</h2>
-              <p id="overview-route">Live tenant data from Tracebackend</p>
+            <h2 id="overview-title">Production dashboard</h2>
+            <p id="overview-route">Live tenant data from Tracebackend</p>
             <div class="hero-meta">
               <span>18.500 kg</span>
               <span data-i18n="overview.sourceLots">3 Herkunftslots</span>
@@ -131,23 +132,23 @@
         <div class="metric-grid">
           <article class="metric-card">
             <span class="metric-label" data-i18n="overview.suppliersReady">Lieferanten bereit</span>
-              <strong id="metric-suppliers">0</strong>
-              <small class="positive">from Tracebackend</small>
+            <strong id="metric-suppliers">0</strong>
+            <small class="positive">from Tracebackend</small>
           </article>
           <article class="metric-card">
             <span class="metric-label" data-i18n="overview.validatedPlots">Validierte Parzellen</span>
-              <strong id="metric-plots">0</strong>
-              <small>tracked plots</small>
+            <strong id="metric-plots">0</strong>
+            <small>tracked plots</small>
           </article>
           <article class="metric-card">
             <span class="metric-label" data-i18n="overview.openReviews">Offene Reviews</span>
-              <strong id="metric-reviews">0</strong>
-              <small class="warning">open reviews</small>
+            <strong id="metric-reviews">0</strong>
+            <small class="warning">open reviews</small>
           </article>
           <article class="metric-card">
             <span class="metric-label" data-i18n="overview.ddsReadiness">DDS-Bereitschaft</span>
-              <strong id="metric-documents">0</strong>
-              <small>completed documents</small>
+            <strong id="metric-documents">0</strong>
+            <small>completed documents</small>
           </article>
         </div>
 
@@ -160,7 +161,7 @@
               </div>
               <span class="badge neutral" data-i18n="overview.balanced">18.500 kg bilanziert</span>
             </div>
-              <div class="production-table" id="lineage"></div>
+            <div class="production-table" id="lineage"></div>
           </article>
 
           <article class="panel">
@@ -171,7 +172,7 @@
               </div>
               <span class="count">4</span>
             </div>
-              <ul class="task-list" id="worklist">
+            <ul class="task-list" id="worklist">
               <li>
                 <span class="task-priority high"></span>
                 <div>
@@ -216,7 +217,7 @@
             <span data-i18n="supplier.invite">+ Lieferant einladen</span>
           </button>
         </div>
-          <div class="panel table-panel">
+        <div class="panel table-panel">
           <table>
             <thead>
               <tr>
@@ -228,7 +229,7 @@
                 <th data-i18n="supplier.lastActivity">Letzte Aktivität</th>
               </tr>
             </thead>
-              <tbody id="suppliers-body">
+            <tbody id="suppliers-body">
               <tr>
                 <td><strong>Kaffa Cooperative Union</strong><small>SUP-00018</small></td>
                 <td data-i18n="common.ethiopia">Äthiopien</td>
@@ -270,7 +271,7 @@
             <span data-i18n="plot.import">GeoJSON importieren</span>
           </button>
         </div>
-          <div class="map-layout" id="plots-layout">
+        <div class="map-layout" id="plots-layout">
           <article class="map-card">
             <div class="map-placeholder" role="img" aria-label="Abstrakte Karte der Kaffee-Parzellen"
               data-i18n-aria-label="aria.map">

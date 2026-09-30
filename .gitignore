@@ -6,3 +6,5 @@ backend/dist/
 backend/node_modules/
 backend/storage/
 asteros/
+.vercel
+.env*
