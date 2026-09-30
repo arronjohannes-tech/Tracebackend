@@ -40,9 +40,12 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   app.decorateRequest("auth", null);
   app.addContentTypeParser("*", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
 
+  const allowedAdminOrigins = new Set(
+    config.ADMIN_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
+  );
   await app.register(cors, {
     origin: (origin, callback) => {
-      if (!origin || origin === config.ADMIN_ORIGIN) callback(null, true);
+      if (!origin || allowedAdminOrigins.has(origin)) callback(null, true);
       else callback(new Error("Origin is not allowed."), false);
     },
     allowedHeaders: [
