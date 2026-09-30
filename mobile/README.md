@@ -88,3 +88,21 @@ npm run export:ios
 ```
 
 Für signierte Builds werden weiterhin Expo Application Services sowie die jeweiligen Apple-/Google-Entwicklerkonten benötigt.
+
+## TestFlight
+
+Vor dem ersten Build muss der Backend-Deployment-Schutz fuer
+`https://tracebackend-backend-meloy.vercel.app` fuer mobile Zugriffe freigegeben
+sein. Die Produktionsprofile setzen diese URL als `EXPO_PUBLIC_API_URL`.
+
+```powershell
+npx eas login
+npx eas build:configure
+npx eas build --platform ios --profile production
+npx eas submit --platform ios --profile production
+```
+
+Der Build erzeugt eine signierte IPA ueber EAS. Fuer `build` und `submit` werden
+Apple-Developer-/App-Store-Connect-Berechtigungen benoetigt. Die Bundle-ID ist
+`com.ajohannes.tracebackend`; der erste Build verwendet Nummer `1`, danach wird
+die Buildnummer durch `autoIncrement` erhoeht.

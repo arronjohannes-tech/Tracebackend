@@ -10,7 +10,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ajohannes.tracebackend",
+      "buildNumber": "1",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "SCTracker uses your location to capture coffee plot coordinates while you are on site."
       }
     },
@@ -35,6 +37,12 @@
       "expo-font",
       "expo-sharing",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "21ec8ee9-a8ac-4a19-af07-eec1a3bbc44e"
+      }
+    },
+    "owner": "ajohannes"
   }
 }
