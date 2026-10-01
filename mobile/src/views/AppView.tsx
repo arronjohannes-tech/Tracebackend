@@ -923,7 +923,7 @@ export function AppView({ controller }: { controller: AppController }) {
     return <HomeScreen state={state} t={t} />;
   }, [activeTab, state, t, update, auth.session?.selectedOrganizationId]);
 
-  if ((!state || !auth.ready) && !storageError && !auth.error) {
+  if (!auth.ready && !storageError && !auth.error) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <ActivityIndicator style={styles.loader} size="large" color={palette.lime} />
@@ -931,7 +931,7 @@ export function AppView({ controller }: { controller: AppController }) {
     );
   }
 
-  if (!state || !auth.ready) {
+  if (!auth.ready) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="light" />
@@ -947,6 +947,14 @@ export function AppView({ controller }: { controller: AppController }) {
 
   if (!auth.session) {
     return <LoginScreen controller={controller} />;
+  }
+
+  if (!state) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ActivityIndicator style={styles.loader} size="large" color={palette.lime} />
+      </SafeAreaView>
+    );
   }
 
   if (!auth.session.selectedOrganizationId) {
