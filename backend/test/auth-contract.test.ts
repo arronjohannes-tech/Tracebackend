@@ -90,6 +90,30 @@ test("CORS preflight allows X-Organization-Id", async () => {
   }
 });
 
+test("CORS allows the configured Tracehub origin and rejects unknown origins without a server error", async () => {
+  const pool = { query: async () => ({ rows: [] }) } as unknown as Pool;
+  const tracehubOrigin = "https://tracehub-ten.vercel.app";
+  const app = await buildApp({ ...config, TRACEHUB_BASE_URL: tracehubOrigin }, pool);
+  try {
+    const allowed = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/auth/login",
+      headers: { origin: tracehubOrigin, "access-control-request-method": "POST" },
+    });
+    assert.equal(allowed.statusCode, 204);
+    assert.equal(allowed.headers["access-control-allow-origin"], tracehubOrigin);
+
+    const denied = await app.inject({
+      method: "OPTIONS",
+      url: "/api/v1/auth/login",
+      headers: { origin: "https://unknown.example", "access-control-request-method": "POST" },
+    });
+    assert.equal(denied.statusCode, 403);
+  } finally {
+    await app.close();
+  }
+});
+
 function fakeTenantPool(): Pool {
   const client = {
     async query(text: string): Promise<QueryResult> {

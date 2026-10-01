@@ -44,12 +44,12 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   app.addContentTypeParser("*", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
 
   const allowedAdminOrigins = new Set(
-    config.ADMIN_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean),
+    [...config.ADMIN_ORIGIN.split(","), config.TRACEHUB_BASE_URL].map((origin) => origin.trim()).filter(Boolean),
   );
   await app.register(cors, {
     origin: (origin, callback) => {
       if (!origin || allowedAdminOrigins.has(origin)) callback(null, true);
-      else callback(new Error("Origin is not allowed."), false);
+      else callback(new AppError(403, "ORIGIN_NOT_ALLOWED", "Origin is not allowed."), false);
     },
     allowedHeaders: [
       "Authorization",
