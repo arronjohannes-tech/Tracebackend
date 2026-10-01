@@ -17,6 +17,7 @@ const appConfig: AppConfig = {
   REFRESH_TOKEN_TTL_DAYS: 30,
   CONFIG_ENCRYPTION_KEY: randomBytes(32),
   PUBLIC_BASE_URL: "http://127.0.0.1:4300",
+  TRACEHUB_BASE_URL: "http://127.0.0.1:4173",
   STORAGE_DIR: "storage",
   ADMIN_ORIGIN: "http://127.0.0.1:4300",
 };

@@ -13,6 +13,7 @@ import { registerAdminRoutes } from "./routes/admin.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerOperationRoutes } from "./routes/operations.js";
 import { registerSyncRoutes } from "./routes/sync.js";
+import { registerSupplierInvitationRoutes } from "./routes/supplier-invitations.js";
 import { registerDashboardRoutes } from "./controllers/dashboard-controller.js";
 
 export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyInstance> {
@@ -28,6 +29,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
           "req.query.token",
           "req.headers.x-upload-token",
           "body.password",
+          "body.token",
           "body.refreshToken",
           "body.eu.password",
           "body.eu.username",
@@ -100,6 +102,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   await registerDashboardRoutes(app, pool, config, authenticate);
   await registerAdminRoutes(app, pool, config, authenticate);
   await registerSyncRoutes(app, pool, authenticate);
+  await registerSupplierInvitationRoutes(app, pool, config, authenticate);
   await registerDocumentRoutes(app, pool, config, authenticate);
   await registerOperationRoutes(app, pool, config, authenticate);
 

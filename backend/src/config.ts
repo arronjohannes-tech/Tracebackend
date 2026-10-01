@@ -28,6 +28,9 @@ const schema = z.object({
     return decoded;
   }),
   PUBLIC_BASE_URL: z.string().url().default("http://127.0.0.1:4300"),
+  TRACEHUB_BASE_URL: z.string().url().default("http://127.0.0.1:4173"),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  INVITATION_FROM_EMAIL: z.string().email().optional(),
   STORAGE_DIR: z.string().default("./storage"),
   STORAGE_DRIVER: z.enum(["local", "s3"]).optional(),
   S3_BUCKET: z.string().min(1).optional(),
@@ -53,11 +56,13 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
   if (parsed.NODE_ENV === "production" && parsed.STORAGE_DRIVER !== "s3") throw new Error("Production requires durable S3 object storage.");
   if (parsed.STORAGE_DRIVER === "s3" && !parsed.S3_BUCKET) throw new Error("S3_BUCKET is required.");
   if (parsed.NODE_ENV === "production" && !parsed.PUBLIC_BASE_URL.startsWith("https://")) throw new Error("Production PUBLIC_BASE_URL must use HTTPS.");
+  if (parsed.NODE_ENV === "production" && !parsed.TRACEHUB_BASE_URL.startsWith("https://")) throw new Error("Production TRACEHUB_BASE_URL must use HTTPS.");
   if (parsed.NODE_ENV === "production" && parsed.S3_ENDPOINT && !parsed.S3_ENDPOINT.startsWith("https://")) throw new Error("Production object storage must use HTTPS.");
   return {
     ...parsed,
     S3_ENDPOINT: parsed.S3_ENDPOINT ?? parsed.AWS_ENDPOINT_URL_S3,
     PUBLIC_BASE_URL: parsed.PUBLIC_BASE_URL.replace(/\/+$/, ""),
+    TRACEHUB_BASE_URL: parsed.TRACEHUB_BASE_URL.replace(/\/+$/, ""),
     STORAGE_DIR: path.resolve(process.cwd(), parsed.STORAGE_DIR),
   };
 }

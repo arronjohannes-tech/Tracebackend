@@ -26,6 +26,19 @@ try {
  CREATE TABLE sync_changes(sequence_id bigserial PRIMARY KEY,organization_id uuid NOT NULL,payload jsonb);
  CREATE TABLE documents(id uuid);`);
  await a.query(await readFile(new URL("../migrations/004_mobile_consistency.sql",import.meta.url),"utf8"));
+ await a.query(`CREATE TABLE organizations(id uuid PRIMARY KEY); CREATE TABLE users(id uuid PRIMARY KEY);
+ ALTER TABLE suppliers ADD COLUMN organization_id uuid;
+ CREATE FUNCTION app_system_admin() RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT true $$;
+ CREATE FUNCTION app_organization_id() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULL::uuid $$;`);
+ await a.query(await readFile(new URL("../migrations/005_supplier_invitations.sql",import.meta.url),"utf8"));
+ const invitedOrg=randomUUID(),inviter=randomUUID();
+ await a.query("INSERT INTO organizations(id) VALUES($1)",[invitedOrg]);
+ await a.query("INSERT INTO users(id) VALUES($1)",[inviter]);
+ await a.query(`INSERT INTO supplier_invitations(organization_id,legal_name,email,token_hash,expires_at,created_by)
+ VALUES($1,'Coffee Union','coffee@example.com','test-hash',now()+interval '7 days',$2)`,[invitedOrg,inviter]);
+ assert.equal((await a.query("SELECT legal_name FROM supplier_invitations WHERE token_hash='test-hash'")).rows[0].legal_name,"Coffee Union");
+ assert.equal((await a.query("SELECT count(*)::int AS count FROM pg_policies WHERE tablename='supplier_invitations'")).rows[0].count,1);
+ console.log("PASS: supplier invitation migration creates usable tenant-scoped invitation and supplier fields.");
  const org=randomUUID();
  await a.query("BEGIN");
  const first=(await a.query("INSERT INTO sync_changes(organization_id,payload) VALUES($1,'{}') RETURNING sequence_id",[org])).rows[0].sequence_id;
@@ -49,7 +62,7 @@ try {
  console.log("PASS: rollback gaps do not lose committed changes.");
  assert.equal(versionMatches(2,1),false);assert.equal(versionMatches(2,2),true);
  console.log("PASS: server revision comparison rejects stale edits independently of device time.");
- console.log("Integration checks: 3 passed, 0 failed. Real PostgreSQL; migration 004 on minimal tables. PostGIS/full migration not covered.");
+ console.log("Integration checks: 4 passed, 0 failed. Real PostgreSQL; migrations 004-005 on minimal tables. PostGIS/full migration not covered.");
 } finally {
  await Promise.allSettled([a?.query("ROLLBACK"),b?.query("ROLLBACK")]);
  await Promise.allSettled([a?.end(),b?.end(),c?.end()]);

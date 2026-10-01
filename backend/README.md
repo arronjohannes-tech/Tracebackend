@@ -51,6 +51,14 @@ framework preset. The production environment requires:
 - `PUBLIC_BASE_URL`: public HTTPS URL of the backend
 - `ADMIN_ORIGIN`: public HTTPS origin allowed to use the administration SPA
 - `NODE_ENV=production`
+- `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
+- `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for supplier invitations
+
+Apply migration `005_supplier_invitations.sql` with `npm run migrate` before deploying
+the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
+until both mail settings are present. Invitations expire after seven days; only
+token hashes are stored, and a link can be used once. The registration page is
+served by the Tracehub frontend at `/register.html`, not by the backend.
 
 Vercel supplies `PORT` automatically. The server binds to all interfaces and uses
 `/tmp/sctracker-storage` when `STORAGE_DIR` is not set. Vercel's local filesystem
@@ -77,6 +85,9 @@ using those workflows in production.
 | POST | `/api/v1/auth/refresh` | Rotate `{refreshToken}` and return the same organization selection fields |
 | POST | `/api/v1/auth/logout` | Revoke supplied refresh token |
 | GET | `/api/v1/auth/me` | Current principal |
+| POST | `/api/v1/supplier-invitations` | Authenticated organization administrator: `{legalName,email,organizationId?}`; sends a registration link |
+| POST | `/api/v1/supplier-invitations/resolve` | Public `{token}`; validates link and returns invited organization, supplier name and email |
+| POST | `/api/v1/supplier-invitations/register` | Public `{token,legalName,tradingName,registrationNumber,taxId,countryCode,region,streetAddress,city,postalCode,contactName,contactPhone,website,password}`; creates supplier and field-agent account and returns a login session |
 | GET | `/api/v1/geofences` | Active geofences for the authenticated organization |
 | POST | `/api/v1/sync/push` | Mobile `{deviceId,operations[]}`; returns accepted/conflicts |
 | GET | `/api/v1/sync/pull?cursor=0&limit=500` | Ordered tenant changes and next cursor |
