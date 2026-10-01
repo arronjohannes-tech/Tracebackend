@@ -213,7 +213,7 @@
             <h2 data-i18n="supplier.title">Kaffee-Lieferanten</h2>
             <p data-i18n="supplier.description">Datenerhebung und Freigabestatus der aktuellen Beschaffungspartner.</p>
           </div>
-          <button class="primary-button" data-toast-key="toast.invite">
+          <button class="primary-button" type="button" id="invite-supplier-button">
             <span data-i18n="supplier.invite">+ Lieferant einladen</span>
           </button>
         </div>
@@ -506,6 +506,31 @@
       <div><span>SESSION</span><strong>Tracebackend Demo</strong></div>
     </div>
     <button class="primary-button full" type="button" data-profile-close>Close profile</button>
+  </dialog>
+
+  <dialog class="profile-dialog" id="invite-supplier-dialog" aria-labelledby="invite-supplier-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="supplier.inviteEyebrow">LIEFERANTENKONTAKT</p>
+        <h2 id="invite-supplier-title" data-i18n="supplier.inviteTitle">Lieferant einladen</h2>
+      </div>
+      <button class="dialog-close" type="button" data-invite-close data-i18n-aria-label="supplier.inviteClose"
+        aria-label="Schließen">×</button>
+    </div>
+    <form id="invite-supplier-form">
+      <label for="invite-supplier-name" data-i18n="supplier.inviteName">Organisation</label>
+      <input id="invite-supplier-name" name="name" required maxlength="200" autocomplete="organization">
+      <label for="invite-supplier-email" data-i18n="supplier.inviteEmail">E-Mail-Adresse</label>
+      <input id="invite-supplier-email" name="email" type="email" required autocomplete="email">
+      <p class="muted" data-i18n="supplier.inviteNotice">Der Lieferant erhält einen Link zur Registrierung. Die
+        Einladung ist sieben Tage gültig.</p>
+      <p id="invite-supplier-status" role="status" aria-live="polite"></p>
+      <div class="invite-actions">
+        <button type="button" class="secondary-button" data-invite-close
+          data-i18n="supplier.inviteCancel">Abbrechen</button>
+        <button type="submit" class="primary-button" data-i18n="supplier.inviteDraft">Einladung senden</button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

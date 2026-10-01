@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Lieferantenregistrierung | SCTracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="registration-page">
+    <header class="registration-header">
+        <a href="/" class="registration-brand"
+            aria-label="SCTracker Startseite"><span>SC</span><strong>SCTracker</strong></a>
+        <span>Coffee Evidence</span>
+    </header>
+    <main class="registration-main">
+        <div class="registration-heading">
+            <p class="eyebrow">LIEFERANTENPORTAL</p>
+            <h1>Lieferant registrieren</h1>
+            <p id="registration-organization" class="muted">Einladung wird geprüft…</p>
+        </div>
+        <p id="registration-status" role="status" aria-live="polite"></p>
+        <form id="registration-form" hidden>
+            <fieldset>
+                <legend>Unternehmen</legend>
+                <div class="registration-fields">
+                    <label>Rechtlicher Firmenname <input name="legalName" required maxlength="200"
+                            autocomplete="organization"></label>
+                    <label>Handelsname <input name="tradingName" maxlength="200"></label>
+                    <label>Handelsregisternummer <input name="registrationNumber" required maxlength="100"></label>
+                    <label>Steuer- oder Umsatzsteuer-ID <input name="taxId" maxlength="100"></label>
+                    <label>Website <input name="website" type="url" maxlength="300" placeholder="https://"></label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Geschäftsanschrift</legend>
+                <div class="registration-fields">
+                    <label>Land (ISO-Code) <input name="countryCode" required pattern="[A-Za-z]{2}" maxlength="2"
+                            placeholder="ET" autocomplete="country"></label>
+                    <label>Region <input name="region" required maxlength="200" autocomplete="address-level1"></label>
+                    <label class="registration-wide">Straße und Hausnummer <input name="streetAddress" required
+                            maxlength="300" autocomplete="street-address"></label>
+                    <label>Ort <input name="city" required maxlength="200" autocomplete="address-level2"></label>
+                    <label>Postleitzahl <input name="postalCode" maxlength="30" autocomplete="postal-code"></label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Kontakt und Zugang</legend>
+                <div class="registration-fields">
+                    <label>Kontaktperson <input name="contactName" required maxlength="120" autocomplete="name"></label>
+                    <label>Telefon <input name="contactPhone" type="tel" required maxlength="50"
+                            autocomplete="tel"></label>
+                    <label class="registration-wide">E-Mail-Adresse <input name="email" type="email" readonly
+                            autocomplete="email"></label>
+                    <label>Passwort <input name="password" type="password" required minlength="12" maxlength="1024"
+                            autocomplete="new-password"></label>
+                    <label>Passwort wiederholen <input name="passwordConfirm" type="password" required minlength="12"
+                            maxlength="1024" autocomplete="new-password"></label>
+                </div>
+            </fieldset>
+            <div class="registration-footer">
+                <a href="/">Zurück zu Tracehub</a>
+                <button type="submit" class="primary-button">Registrieren</button>
+            </div>
+        </form>
+    </main>
+    <script type="module" src="register.js"></script>
+</body>
+
+</html>

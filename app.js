@@ -30,6 +30,8 @@ const languageButtons = [...document.querySelectorAll("[data-language]")];
 const accountToggle = document.querySelector("#account-toggle");
 const accountDropdown = document.querySelector("#account-dropdown");
 const profileDialog = document.querySelector("#profile-dialog");
+const inviteSupplierDialog = document.querySelector("#invite-supplier-dialog");
+const inviteSupplierForm = document.querySelector("#invite-supplier-form");
 const layoutToggle = document.querySelector("#layout-toggle");
 const layoutLabel = document.querySelector("#layout-label");
 const authGate = document.querySelector("#auth-gate");
@@ -399,6 +401,51 @@ document.querySelectorAll("[data-profile-close]").forEach((button) => {
 
 profileDialog?.addEventListener("click", (event) => {
   if (event.target === profileDialog) profileDialog.close();
+});
+
+document.querySelector("#invite-supplier-button")?.addEventListener("click", () => {
+  document.querySelector("#invite-supplier-status").textContent = "";
+  inviteSupplierDialog?.showModal();
+});
+document.querySelectorAll("[data-invite-close]").forEach((button) => {
+  button.addEventListener("click", () => inviteSupplierDialog?.close());
+});
+inviteSupplierDialog?.addEventListener("click", (event) => {
+  if (event.target === inviteSupplierDialog) inviteSupplierDialog.close();
+});
+inviteSupplierForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(inviteSupplierForm);
+  const status = document.querySelector("#invite-supplier-status");
+  const submit = inviteSupplierForm.querySelector('[type="submit"]');
+  const payload = {
+    legalName: String(form.get("name")).trim(),
+    email: String(form.get("email")).trim(),
+    ...(selectedOrganizationId() ? { organizationId: selectedOrganizationId() } : {}),
+  };
+  submit.disabled = true;
+  status.textContent = translate(activeLanguage, "supplier.inviteSending");
+  try {
+    const send = () => fetch("/api/v1/supplier-invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${currentAccessToken()}` },
+      body: JSON.stringify(payload),
+    });
+    let response = await send();
+    if (response.status === 401 && await refreshSession()) response = await send();
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.error?.message ?? translate(activeLanguage, "supplier.inviteFailed"));
+    inviteSupplierDialog.close();
+    inviteSupplierForm.reset();
+    toast.textContent = translate(activeLanguage, "supplier.inviteSuccess");
+    toast.classList.add("visible");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("visible"), 3200);
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 layoutToggle?.addEventListener("click", () => {
