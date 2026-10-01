@@ -36,6 +36,9 @@ const authGate = document.querySelector("#auth-gate");
 const appShell = document.querySelector("#app-shell");
 const loginForm = document.querySelector("#tracehub-login-form");
 const authStatus = document.querySelector("#auth-status");
+const escapeHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 let dashboardData = null;
 let toastTimer;
 let activeLanguage = getInitialLanguage();
