@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -106,6 +107,31 @@ function Button({
   );
 }
 
+function IconActionButton({
+  label,
+  icon,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={[styles.iconButton, disabled && styles.buttonDisabled]}
+    >
+      <Ionicons name={icon} size={20} color={palette.forest} />
+    </Pressable>
+  );
+}
+
 function Field({
   label,
   value,
@@ -195,6 +221,39 @@ function Section({
       <Text style={styles.heading}>{title}</Text>
       {description ? <Text style={styles.description}>{description}</Text> : null}
       {children}
+    </View>
+  );
+}
+
+function CollapsibleListSection({
+  title,
+  count,
+  collapsed,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <View style={styles.card}>
+      <Pressable
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel={`${title} (${count})`}
+        style={styles.rowBetween}
+      >
+        <Text style={styles.cardTitle}>{title} ({count})</Text>
+        <Ionicons
+          name={collapsed ? "chevron-down" : "chevron-up"}
+          size={18}
+          color={palette.forest}
+        />
+      </Pressable>
+      {!collapsed ? children : null}
     </View>
   );
 }
@@ -611,20 +670,134 @@ function OperationsScreen({
   state,
   update,
   t,
+  online,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
+  online: boolean;
 }) {
   const [subjectId, setSubjectId] = useState("");
   const [ddsPlotIds, setDdsPlotIds] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState({
+    uploads: false,
+    requests: false,
+    downloads: false,
+  });
   const configured = getApiBaseUrl() !== null;
+  const evidenceOperations = state.operations.filter((operation) => operation.kind === "evidence_pack");
+  const downloadableOperations = evidenceOperations.filter((operation) =>
+    operation.downloadUrl || operation.localDownloadUri || operation.localDownloadStatus === "queued",
+  );
 
   function providerError(error: unknown): string {
     if (error instanceof ApiError && error.code === "NOT_CONFIGURED") {
       return t.operations.providerBlocked;
     }
     return error instanceof Error ? error.message : String(error);
+  }
+
+  function updateOperation(
+    operationId: string,
+    recipe: (operation: OperationalRequest) => OperationalRequest,
+  ) {
+    update((current) => ({
+      ...current,
+      operations: current.operations.map((operation) =>
+        operation.id === operationId ? recipe(operation) : operation,
+      ),
+    }));
+  }
+
+  function mergeOperationLocalState(
+    remote: OperationalRequest,
+    local?: OperationalRequest,
+  ): OperationalRequest {
+    const merged: OperationalRequest = {
+      ...remote,
+      localDownloadUri: local?.localDownloadUri,
+      localDownloadStatus: local?.localDownloadStatus,
+      localDownloadError: local?.localDownloadError,
+    };
+    if (merged.kind !== "evidence_pack" || !merged.downloadUrl || merged.localDownloadUri) {
+      return merged;
+    }
+    if (merged.localDownloadStatus) return merged;
+    return {
+      ...merged,
+      localDownloadStatus: "queued",
+    };
+  }
+
+  async function openLocalDocument(uri: string) {
+    try {
+      await Linking.openURL(uri);
+      return;
+    } catch {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri);
+        return;
+      }
+    }
+    Alert.alert(t.common.download, uri);
+  }
+
+  async function queueOrDownloadEvidence(
+    operation: OperationalRequest,
+    openAfterDownload: boolean,
+  ) {
+    if (!operation.downloadUrl) return;
+    if (!online) {
+      updateOperation(operation.id, (current) => ({
+        ...current,
+        localDownloadStatus: "queued",
+        localDownloadError: undefined,
+      }));
+      return;
+    }
+    updateOperation(operation.id, (current) => ({
+      ...current,
+      localDownloadStatus: "downloading",
+      localDownloadError: undefined,
+    }));
+    try {
+      const destination = new File(Paths.document, `evidence-${operation.id}.json`);
+      const headers = await getCurrentAuthHeaders();
+      const file = await File.downloadFileAsync(operation.downloadUrl, destination, {
+        headers,
+        idempotent: true,
+      });
+      updateOperation(operation.id, (current) => ({
+        ...current,
+        localDownloadUri: file.uri,
+        localDownloadStatus: "downloaded",
+        localDownloadError: undefined,
+      }));
+      if (openAfterDownload) await openLocalDocument(file.uri);
+    } catch (error) {
+      updateOperation(operation.id, (current) => ({
+        ...current,
+        localDownloadStatus: "failed",
+        localDownloadError: providerError(error),
+      }));
+    }
+  }
+
+  async function showLocalDocument(operation: OperationalRequest) {
+    if (operation.localDownloadUri) {
+      await openLocalDocument(operation.localDownloadUri);
+      return;
+    }
+    if (operation.downloadUrl) {
+      await queueOrDownloadEvidence(operation, true);
+    }
+  }
+
+  function removeOperation(operationId: string) {
+    update((current) => ({
+      ...current,
+      operations: current.operations.filter((operation) => operation.id !== operationId),
+    }));
   }
 
   async function pickAndUpload() {
@@ -686,7 +859,10 @@ function OperationsScreen({
     try {
       if (kind === "dds" && ddsPlotIds.length === 0) { Alert.alert(t.alerts.required); return; }
       const result = await requestOperation(kind, subjectId.trim(), createUuid(), kind === "dds" ? ddsPlotIds : undefined);
-      update((current) => ({ ...current, operations: [result, ...current.operations] }));
+      update((current) => ({
+        ...current,
+        operations: [mergeOperationLocalState(result, current.operations.find((item) => item.id === result.id)), ...current.operations.filter((item) => item.id !== result.id)],
+      }));
     } catch (error) {
       Alert.alert(t.common.failed, providerError(error));
     }
@@ -697,7 +873,9 @@ function OperationsScreen({
       const result = await getOperation(operation.kind, operation.id);
       update((current) => ({
         ...current,
-        operations: current.operations.map((item) => item.id === result.id ? result : item),
+        operations: current.operations.map((item) =>
+          item.id === result.id ? mergeOperationLocalState(result, item) : item,
+        ),
       }));
     } catch (error) {
       Alert.alert(t.common.failed, providerError(error));
@@ -711,31 +889,29 @@ function OperationsScreen({
         : await submitDds(operation.id, createUuid());
       update((current) => ({
         ...current,
-        operations: current.operations.map((item) => item.id === result.id ? result : item),
+        operations: current.operations.map((item) =>
+          item.id === result.id ? mergeOperationLocalState(result, item) : item,
+        ),
       }));
     } catch (error) {
       Alert.alert(t.common.failed, providerError(error));
     }
   }
 
-  async function downloadAndShare(operation: OperationalRequest) {
-    if (!operation.downloadUrl) return;
-    try {
-      const destination = new File(Paths.cache, `evidence-${operation.id}.json`);
-      const headers = await getCurrentAuthHeaders();
-      const file = await File.downloadFileAsync(operation.downloadUrl, destination, {
-        headers,
-        idempotent: true,
-      });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri);
-      } else {
-        Alert.alert(t.common.download, file.uri);
-      }
-    } catch (error) {
-      Alert.alert(t.common.failed, providerError(error));
-    }
-  }
+  useEffect(() => {
+    if (!online) return;
+    if (state.operations.some((operation) => operation.localDownloadStatus === "downloading")) return;
+    const queued = state.operations.find((operation) =>
+      operation.kind === "evidence_pack" &&
+      operation.downloadUrl &&
+      (
+        operation.localDownloadStatus === "queued" ||
+        (operation.status === "completed" && !operation.localDownloadUri && !operation.localDownloadStatus)
+      ),
+    );
+    if (!queued) return;
+    void queueOrDownloadEvidence(queued, false);
+  }, [online, state.operations]);
 
   return (
     <>
@@ -750,19 +926,6 @@ function OperationsScreen({
         </View>
       ) : null}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>{t.operations.documents}</Text>
-        <Button label={t.operations.pickUpload} icon="cloud-upload" onPress={() => void pickAndUpload()} disabled={!configured} />
-        {state.documents.map((document) => (
-          <View key={document.id} style={styles.listRow}>
-            <View style={styles.flex}>
-              <Text style={styles.itemTitle}>{document.fileName}</Text>
-              <Text style={styles.caption}>{document.mimeType} · {document.size} B</Text>
-            </View>
-            <Badge status={document.status} t={t} />
-          </View>
-        ))}
-      </View>
-      <View style={styles.card}>
         <Field label={t.common.subjectId} value={subjectId} onChangeText={setSubjectId} />
         {state.plots.filter(plot => plot.syncStatus === "synced").map(plot => (
           <Pressable key={plot.id} accessibilityRole="checkbox" accessibilityState={{checked: ddsPlotIds.includes(plot.id)}} onPress={() => setDdsPlotIds(current => current.includes(plot.id) ? current.filter(id => id !== plot.id) : [...current, plot.id])}>
@@ -776,32 +939,91 @@ function OperationsScreen({
         <Text style={styles.cardTitle}>{t.operations.dds}</Text>
         <Button label={t.operations.createDds} icon="document-text" onPress={() => void create("dds")} disabled={!configured} />
       </View>
-      {state.operations.length === 0 ? <Text style={styles.empty}>{t.operations.noItems}</Text> : null}
-      {state.operations.map((operation) => (
-        <View key={operation.id} style={styles.card}>
-          <View style={styles.rowBetween}>
+      <CollapsibleListSection
+        title={t.operations.uploadsList}
+        count={state.documents.length}
+        collapsed={collapsed.uploads}
+        onToggle={() => setCollapsed((current) => ({ ...current, uploads: !current.uploads }))}
+      >
+        <Button label={t.operations.pickUpload} icon="cloud-upload" onPress={() => void pickAndUpload()} disabled={!configured} />
+        {state.documents.map((document) => (
+          <View key={document.id} style={styles.listRow}>
             <View style={styles.flex}>
-              <Text style={styles.cardTitle}>{operation.kind.replace("_", " ")}</Text>
-              <Text style={styles.caption}>{operation.subjectId} · {operation.id}</Text>
+              <Text style={styles.itemTitle}>{document.fileName}</Text>
+              <Text style={styles.caption}>{document.mimeType} · {document.size} B</Text>
             </View>
-            <Badge status={operation.status} t={t} />
+            {document.status === "failed" ? null : <Badge status={document.status} t={t} />}
           </View>
-          {operation.status === "not_configured" ? (
-            <Text style={styles.errorText}>{t.operations.providerBlocked}</Text>
-          ) : null}
-          {operation.message ? <Text style={styles.description}>{operation.message}</Text> : null}
-          <Button label={t.operations.checkStatus} icon="refresh" onPress={() => void refresh(operation)} secondary />
-          {operation.kind === "dds" ? (
-            <View style={styles.buttonRow}>
-              <Button label={t.operations.validateDds} icon="checkmark" onPress={() => void mutateDds(operation, "validate")} secondary />
-              <Button label={t.operations.submitDds} icon="send" onPress={() => void mutateDds(operation, "submit")} />
+        ))}
+      </CollapsibleListSection>
+      <CollapsibleListSection
+        title={t.operations.requestsList}
+        count={state.operations.length}
+        collapsed={collapsed.requests}
+        onToggle={() => setCollapsed((current) => ({ ...current, requests: !current.requests }))}
+      >
+        {state.operations.length === 0 ? <Text style={styles.empty}>{t.operations.noItems}</Text> : null}
+        {state.operations.map((operation) => (
+          <View key={operation.id} style={styles.listItemCard}>
+            <View style={styles.rowBetween}>
+              <View style={styles.flex}>
+                <Text style={styles.cardTitle}>{operation.kind.replace("_", " ")}</Text>
+                <Text style={styles.caption}>{operation.subjectId} · {operation.id}</Text>
+              </View>
+              {operation.status === "failed" ? null : <Badge status={operation.status} t={t} />}
             </View>
-          ) : null}
-          {operation.kind === "evidence_pack" && operation.downloadUrl ? (
-            <Button label={`${t.common.download} / ${t.common.share}`} icon="share" onPress={() => void downloadAndShare(operation)} />
-          ) : null}
-        </View>
-      ))}
+            {operation.status === "not_configured" ? (
+              <Text style={styles.errorText}>{t.operations.providerBlocked}</Text>
+            ) : null}
+            {operation.message ? <Text style={styles.description}>{operation.message}</Text> : null}
+            <Button label={t.operations.checkStatus} icon="refresh" onPress={() => void refresh(operation)} secondary />
+            {operation.kind === "dds" ? (
+              <View style={styles.buttonRow}>
+                <Button label={t.operations.validateDds} icon="checkmark" onPress={() => void mutateDds(operation, "validate")} secondary />
+                <Button label={t.operations.submitDds} icon="send" onPress={() => void mutateDds(operation, "submit")} />
+              </View>
+            ) : null}
+          </View>
+        ))}
+      </CollapsibleListSection>
+      <CollapsibleListSection
+        title={t.operations.downloadedList}
+        count={downloadableOperations.length}
+        collapsed={collapsed.downloads}
+        onToggle={() => setCollapsed((current) => ({ ...current, downloads: !current.downloads }))}
+      >
+        {downloadableOperations.length === 0 ? <Text style={styles.empty}>{t.operations.noItems}</Text> : null}
+        {downloadableOperations.map((operation) => (
+          <View key={`download-${operation.id}`} style={styles.listRow}>
+            <View style={styles.flex}>
+              <Text style={styles.itemTitle}>{operation.subjectId}</Text>
+              <Text style={styles.caption}>{operation.id}</Text>
+              {operation.localDownloadStatus === "queued" ? (
+                <Text style={styles.caption}>{t.operations.queuedDownload}</Text>
+              ) : null}
+              {operation.localDownloadStatus === "downloading" ? (
+                <Text style={styles.caption}>{t.operations.downloading}</Text>
+              ) : null}
+              {operation.localDownloadStatus === "downloaded" ? (
+                <Text style={styles.caption}>{t.operations.downloaded}</Text>
+              ) : null}
+            </View>
+            <View style={styles.iconButtonRow}>
+              <IconActionButton
+                label={t.operations.showLocal}
+                icon="eye"
+                onPress={() => void showLocalDocument(operation)}
+                disabled={!operation.localDownloadUri && !operation.downloadUrl}
+              />
+              <IconActionButton
+                label={t.operations.removeItem}
+                icon="trash"
+                onPress={() => removeOperation(operation.id)}
+              />
+            </View>
+          </View>
+        ))}
+      </CollapsibleListSection>
     </>
   );
 }
@@ -1055,7 +1277,9 @@ export function AppView({ controller }: { controller: AppController }) {
         />
       );
     }
-    if (activeTab === "operations") return <OperationsScreen state={state} update={update} t={t} />;
+    if (activeTab === "operations") {
+      return <OperationsScreen state={state} update={update} t={t} online={online && configured} />;
+    }
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
   }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId]);
@@ -1257,9 +1481,28 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", textAlign: "center" },
   buttonTextSecondary: { color: palette.forest },
+  iconButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: palette.forest,
+    borderRadius: 9,
+    backgroundColor: "#FFFFFF",
+  },
   buttonRow: { flexDirection: "row", gap: 8 },
+  iconButtonRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowBetween: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 9 },
   listRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 9, borderTopWidth: 1, borderTopColor: palette.line },
+  listItemCard: {
+    gap: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+  },
   empty: { padding: 18, color: palette.muted, textAlign: "center" },
   badge: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: palette.softAmber },
   badgeGood: { backgroundColor: palette.softGreen },

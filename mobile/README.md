@@ -12,8 +12,9 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 - ungescopte V3-/V2-/Legacy-Plot-Daten werden mit Quelle, Originalformat und Rohwert in `sctracker.mobileState.legacyQuarantine.v1` quarantänisiert; sie werden keinem Login zugeordnet und nie automatisch synchronisiert
 - retry-sichere Push/Pull-Synchronisierung mit UUID-/Idempotency-IDs, Outbox, Inbox-Cursor und sichtbarer Konfliktauflösung
 - Dokument-Upload über Presigned-URL-Initiierung und Abschluss
-- geschützter Evidence-Pack-Download als JSON mit Authentifizierungs- und Organisationsheadern
+- geschützter Evidence-Pack-Download als JSON mit Authentifizierungs- und Organisationsheadern, Offline-Queue und automatischem Hintergrund-Download bei wiederhergestellter Verbindung
 - Satellitenanalyse, Evidence-Pack-Anforderung mit Download/Teilen sowie DDS-Entwurf, Validierung, Einreichung und Status
+- auf-/zuklappbare Listen im Vorgänge-Bereich inklusive Aktionen **Anzeigen** (lokales Dokument öffnen) und **Entfernen** (Eintrag aus Liste löschen)
 - sichtbarer Online-/Offline-, Konfigurations- und Synchronisierungsstatus mit manueller Wiederholung
 
 `NOT_CONFIGURED` und eine fehlende API-URL werden immer als blockierende Fehler angezeigt und nie als Erfolg behandelt.

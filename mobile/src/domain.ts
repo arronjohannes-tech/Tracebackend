@@ -79,6 +79,8 @@ export type DocumentRecord = {
 
 export type OperationStatus = "queued" | "processing" | "completed" | "failed" | "not_configured";
 
+export type OperationDownloadStatus = "idle" | "queued" | "downloading" | "downloaded" | "failed";
+
 export type OperationalRequest = {
   id: string;
   kind: "satellite" | "evidence_pack" | "dds";
@@ -87,6 +89,9 @@ export type OperationalRequest = {
   downloadUrl?: string;
   message?: string;
   updatedAt: string;
+  localDownloadUri?: string;
+  localDownloadStatus?: OperationDownloadStatus;
+  localDownloadError?: string;
 };
 
 export type OutboxOperation = {

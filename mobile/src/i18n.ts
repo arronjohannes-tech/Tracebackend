@@ -99,6 +99,9 @@ export type Translation = {
     title: string;
     documents: string;
     pickUpload: string;
+    uploadsList: string;
+    requestsList: string;
+    downloadedList: string;
     satellite: string;
     requestSatellite: string;
     evidence: string;
@@ -108,6 +111,11 @@ export type Translation = {
     validateDds: string;
     submitDds: string;
     checkStatus: string;
+    showLocal: string;
+    removeItem: string;
+    queuedDownload: string;
+    downloading: string;
+    downloaded: string;
     noItems: string;
     providerBlocked: string;
   };
@@ -166,9 +174,12 @@ export const translations = {
     },
     operations: {
       title: "Compliance-Vorgänge", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
+      uploadsList: "Upload-Liste", requestsList: "Vorgangs-Liste", downloadedList: "Downloads",
       satellite: "Satellitenanalyse", requestSatellite: "Analyse anfordern", evidence: "Evidence Pack",
       requestEvidence: "Evidence Pack anfordern", dds: "DDS-Entwurf", createDds: "DDS-Entwurf erstellen",
       validateDds: "Validieren", submitDds: "Einreichen", checkStatus: "Status abrufen",
+      showLocal: "Anzeigen", removeItem: "Entfernen", queuedDownload: "Wird heruntergeladen, sobald online.",
+      downloading: "Download läuft ...", downloaded: "Lokal gespeichert",
       noItems: "Noch keine Vorgänge.", providerBlocked: "Provider-Konfiguration fehlt. Dieser Vorgang ist blockiert.",
     },
     help: {
@@ -226,9 +237,12 @@ export const translations = {
     },
     operations: {
       title: "Compliance operations", documents: "Documents", pickUpload: "Pick and upload document",
+      uploadsList: "Upload list", requestsList: "Operation list", downloadedList: "Downloads",
       satellite: "Satellite analysis", requestSatellite: "Request analysis", evidence: "Evidence pack",
       requestEvidence: "Request evidence pack", dds: "DDS draft", createDds: "Create DDS draft",
       validateDds: "Validate", submitDds: "Submit", checkStatus: "Check status", noItems: "No operations yet.",
+      showLocal: "Show", removeItem: "Remove", queuedDownload: "Will download automatically when online.",
+      downloading: "Downloading ...", downloaded: "Saved locally",
       providerBlocked: "Provider configuration is missing. This operation is blocked.",
     },
     help: {
@@ -286,9 +300,12 @@ export const translations = {
     },
     operations: {
       title: "የተገዢነት ሂደቶች", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
+      uploadsList: "የማስቀመጫ ዝርዝር", requestsList: "የሂደት ዝርዝር", downloadedList: "የወረዱ ፋይሎች",
       satellite: "የሳተላይት ትንተና", requestSatellite: "ትንተና ጠይቅ", evidence: "የማስረጃ ጥቅል",
       requestEvidence: "የማስረጃ ጥቅል ጠይቅ", dds: "የDDS ረቂቅ", createDds: "የDDS ረቂቅ ፍጠር",
       validateDds: "አረጋግጥ", submitDds: "አስገባ", checkStatus: "ሁኔታን አረጋግጥ",
+      showLocal: "አሳይ", removeItem: "አስወግድ", queuedDownload: "ኦንላይን ሲሆን በራስ-ሰር ይወርዳል።",
+      downloading: "በማውረድ ላይ ...", downloaded: "በአካባቢ ተቀምጧል",
       noItems: "ገና ሂደት የለም።", providerBlocked: "የአቅራቢ ውቅር የለም። ይህ ሂደት ታግዷል።",
     },
     help: {
@@ -346,9 +363,12 @@ export const translations = {
     },
     operations: {
       title: "መስርሓት ምኽባር ሕጊ", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",
+      uploadsList: "ዝርዝር ምስቃል", requestsList: "ዝርዝር መስርሕ", downloadedList: "ዝወረዱ ፋይላት",
       satellite: "ትንተና ሳተላይት", requestSatellite: "ትንተና ሕተት", evidence: "ጥርናፈ መርትዖ",
       requestEvidence: "ጥርናፈ መርትዖ ሕተት", dds: "ንድፊ DDS", createDds: "ንድፊ DDS ፍጠር",
       validateDds: "ኣረጋግጽ", submitDds: "ኣቕርብ", checkStatus: "ኩነታት ርአ",
+      showLocal: "ኣርኢ", removeItem: "ኣወግድ", queuedDownload: "ኣብ መስመር ምስ ኮነ ብኣውቶ ክወርድ እዩ።",
+      downloading: "ይወርድ ኣሎ ...", downloaded: "ኣብ መሳርሒ ተዓቂቡ",
       noItems: "ገና መስርሕ የለን።", providerBlocked: "ውቅር ኣቕራቢ የለን። እዚ መስርሕ ተዓጽዩ።",
     },
     help: {
