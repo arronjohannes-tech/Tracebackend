@@ -59,6 +59,12 @@ export type Translation = {
     empty: string;
     producerCount: string;
     plotCount: string;
+    update: string;
+    newSupplier: string;
+    selected: string;
+    remoteTitle: string;
+    remoteEmpty: string;
+    loadRemote: string;
   };
   plots: {
     title: string;
@@ -84,6 +90,10 @@ export type Translation = {
     geofenceReview: string;
     geofenceApproved: string;
     geofenceBlocked: string;
+    maxPoints: string;
+    reset: string;
+    cancel: string;
+    duplicatePoint: string;
   };
   operations: {
     title: string;
@@ -137,9 +147,12 @@ export const translations = {
     suppliers: {
       title: "Lieferanten", description: "Lieferanten werden offline angelegt und über die Outbox synchronisiert.",
       add: "Lieferant hinzufügen", empty: "Noch keine Lieferanten.", producerCount: "Produzenten", plotCount: "Plots",
+      update: "Lieferant aktualisieren", newSupplier: "Neuer Lieferant", selected: "Ausgewählt",
+      remoteTitle: "Lieferanten aus der Datenbank", remoteEmpty: "Keine weiteren Lieferanten in der Datenbank.",
+      loadRemote: "Aus Datenbank laden",
     },
     plots: {
-      title: "GeoJSON-Plots", description: "Mindestens drei GPS-Punkte erfassen oder ein GeoJSON-Polygon importieren und bearbeiten.",
+      title: "GeoJSON-Plots", description: "Drei GPS-Punkte erfassen oder ein GeoJSON-Polygon importieren und bearbeiten.",
       producer: "Produzent", farm: "Plot- oder Farmname", area: "Fläche (ha)", supplierId: "Lieferanten-ID (optional)",
       capturePoint: "GPS-Punkt hinzufügen", pointCount: "Punkte", polygonJson: "GeoJSON Polygon",
       importGeoJson: "GeoJSON importieren", applyGeoJson: "GeoJSON übernehmen", saveDraft: "Offline-Plot speichern",
@@ -148,6 +161,8 @@ export const translations = {
       geofence: "Geofence", geofencePending: "Ausstehend", geofenceInside: "Innerhalb",
       geofenceOutside: "Außerhalb", geofenceReview: "Prüfung erforderlich",
       geofenceApproved: "Freigegeben", geofenceBlocked: "Lokal blockiert; das Backend entscheidet endgültig.",
+      maxPoints: "Es können nur drei GPS-Punkte erfasst werden.", reset: "Reset", cancel: "Abbrechen",
+      duplicatePoint: "Dieser GPS-Punkt liegt zu nah an einem bereits erfassten Punkt. Bitte einige Meter weitergehen und erneut erfassen.",
     },
     operations: {
       title: "Compliance-Vorgänge", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
@@ -192,9 +207,12 @@ export const translations = {
     suppliers: {
       title: "Suppliers", description: "Suppliers are created offline and synchronised through the outbox.",
       add: "Add supplier", empty: "No suppliers yet.", producerCount: "Producers", plotCount: "Plots",
+      update: "Update supplier", newSupplier: "New supplier", selected: "Selected",
+      remoteTitle: "Suppliers from the database", remoteEmpty: "No further suppliers in the database.",
+      loadRemote: "Load from database",
     },
     plots: {
-      title: "GeoJSON plots", description: "Capture at least three GPS points or import and edit a GeoJSON Polygon.",
+      title: "GeoJSON plots", description: "Capture three GPS points or import and edit a GeoJSON Polygon.",
       producer: "Producer", farm: "Plot or farm name", area: "Area (ha)", supplierId: "Supplier ID (optional)",
       capturePoint: "Add GPS point", pointCount: "Points", polygonJson: "GeoJSON Polygon",
       importGeoJson: "Import GeoJSON", applyGeoJson: "Apply GeoJSON", saveDraft: "Save offline plot",
@@ -203,6 +221,8 @@ export const translations = {
       geofence: "Geofence", geofencePending: "Pending", geofenceInside: "Inside",
       geofenceOutside: "Outside", geofenceReview: "Review required",
       geofenceApproved: "Approved", geofenceBlocked: "Locally blocked; the backend remains authoritative.",
+      maxPoints: "Only three GPS points can be captured.", reset: "Reset", cancel: "Cancel",
+      duplicatePoint: "This GPS point is too close to a point already captured. Move a few metres and capture again.",
     },
     operations: {
       title: "Compliance operations", documents: "Documents", pickUpload: "Pick and upload document",
@@ -246,9 +266,12 @@ export const translations = {
     suppliers: {
       title: "አቅራቢዎች", description: "አቅራቢዎች ከመስመር ውጭ ይፈጠራሉ እና በመላኪያ ወረፋ ይመሳሰላሉ።",
       add: "አቅራቢ ጨምር", empty: "ገና አቅራቢ የለም።", producerCount: "አምራቾች", plotCount: "መሬቶች",
+      update: "አቅራቢን አዘምን", newSupplier: "አዲስ አቅራቢ", selected: "ተመርጧል",
+      remoteTitle: "ከመረጃ ቋት የመጡ አቅራቢዎች", remoteEmpty: "በመረጃ ቋቱ ውስጥ ተጨማሪ አቅራቢ የለም።",
+      loadRemote: "ከመረጃ ቋት ጫን",
     },
     plots: {
-      title: "GeoJSON መሬቶች", description: "ቢያንስ ሶስት GPS ነጥቦችን መዝግብ ወይም GeoJSON Polygon አስገባና አርትዕ።",
+      title: "GeoJSON መሬቶች", description: "ሶስት GPS ነጥቦችን መዝግብ ወይም GeoJSON Polygon አስገባና አርትዕ።",
       producer: "አምራች", farm: "የመሬት ወይም የእርሻ ስም", area: "ስፋት (ሄክታር)",
       supplierId: "የአቅራቢ መለያ (አማራጭ)", capturePoint: "GPS ነጥብ ጨምር", pointCount: "ነጥቦች",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON አስገባ", applyGeoJson: "GeoJSON ተግብር",
@@ -258,6 +281,8 @@ export const translations = {
       geofence: "Geofence", geofencePending: "በመጠባበቅ ላይ", geofenceInside: "ውስጥ",
       geofenceOutside: "ውጭ", geofenceReview: "ምርመራ ያስፈልጋል",
       geofenceApproved: "ጸድቋል", geofenceBlocked: "በአካባቢው ታግዷል፤ የጀርባ ስርዓቱ የመጨረሻ ውሳኔ ይሰጣል።",
+      maxPoints: "ሶስት GPS ነጥቦች ብቻ መመዝገብ ይቻላል።", reset: "ዳግም አስጀምር", cancel: "ሰርዝ",
+      duplicatePoint: "ይህ GPS ነጥብ ቀደም ብሎ ከተመዘገበ ነጥብ ጋር በጣም ቅርብ ነው። ጥቂት ሜትሮች ተንቀሳቅሰው እንደገና ይመዝግቡ።",
     },
     operations: {
       title: "የተገዢነት ሂደቶች", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
@@ -301,9 +326,12 @@ export const translations = {
     suppliers: {
       title: "ኣቕረብቲ", description: "ኣቕረብቲ ካብ መስመር ወጻኢ ይፍጠሩን ብመስርዕ ልኡኽ ይመሳሰሉን።",
       add: "ኣቕራቢ ወስኽ", empty: "ገና ኣቕራቢ የለን።", producerCount: "ኣፍረይቲ", plotCount: "ግራውቲ",
+      update: "ኣቕራቢ ኣሐድስ", newSupplier: "ሓድሽ ኣቕራቢ", selected: "ተመሪጹ",
+      remoteTitle: "ካብ መዝገብ ሓበሬታ ዝመጹ ኣቕረብቲ", remoteEmpty: "ኣብ መዝገብ ሓበሬታ ተወሳኺ ኣቕራቢ የለን።",
+      loadRemote: "ካብ መዝገብ ሓበሬታ ጽዓን",
     },
     plots: {
-      title: "GeoJSON ግራውቲ", description: "እንተወሓደ ሰለስተ GPS ነጥቢ መዝግቡ ወይ GeoJSON Polygon ኣእትዉን ኣርሙን።",
+      title: "GeoJSON ግራውቲ", description: "ሰለስተ GPS ነጥቢ መዝግቡ ወይ GeoJSON Polygon ኣእትዉን ኣርሙን።",
       producer: "ኣፍራዪ", farm: "ስም ግራት ወይ ሕርሻ", area: "ስፍሓት (ሄክታር)",
       supplierId: "መለለዪ ኣቕራቢ (ኣማራጺ)", capturePoint: "ነጥቢ GPS ወስኽ", pointCount: "ነጥብታት",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON ኣእቱ", applyGeoJson: "GeoJSON ተግብር",
@@ -313,6 +341,8 @@ export const translations = {
       geofence: "Geofence", geofencePending: "ይጽበ ኣሎ", geofenceInside: "ውሽጢ",
       geofenceOutside: "ወጻኢ", geofenceReview: "ግምገማ የድሊ",
       geofenceApproved: "ጸዲቑ", geofenceBlocked: "ኣብ መሳርሒ ተዓጽዩ፤ ናይ መወዳእታ ውሳነ ናይ ሰርቨር እዩ።",
+      maxPoints: "ሰለስተ GPS ነጥቢ ጥራይ ክምዝገብ ይኽእል።", reset: "ዳግማይ ጀምር", cancel: "ሰርዝ",
+      duplicatePoint: "እዚ GPS ነጥቢ ምስ ዝተመዝገበ ነጥቢ ኣዝዩ ቀረባ እዩ። ውሑዳት ሜትሮ ተንቀሳቐሱ ደጊምኩም መዝግቡ።",
     },
     operations: {
       title: "መስርሓት ምኽባር ሕጊ", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",

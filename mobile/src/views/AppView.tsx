@@ -4,7 +4,7 @@ import { File, Paths } from "expo-file-system";
 import * as Location from "expo-location";
 import * as Sharing from "expo-sharing";
 import { StatusBar } from "expo-status-bar";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +24,7 @@ import {
   getApiBaseUrl,
   getCurrentAuthHeaders,
   getOperation,
+  getRemoteSuppliers,
   requestOperation,
   submitDds,
   uploadDocument,
@@ -232,49 +233,127 @@ function SuppliersScreen({
   state,
   update,
   t,
+  online,
+  selectedSupplierId,
+  onSelectSupplier,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
+  online: boolean;
+  selectedSupplierId: string | null;
+  onSelectSupplier: (supplierId: string | null) => void;
 }) {
-  const [name, setName] = useState("");
-  const [region, setRegion] = useState("");
+  const selectedLocal = state.suppliers.find((item) => item.id === selectedSupplierId);
+  const [name, setName] = useState(selectedLocal?.name ?? "");
+  const [region, setRegion] = useState(selectedLocal?.region ?? "");
+  const [remoteSuppliers, setRemoteSuppliers] = useState<Supplier[]>([]);
+  const [loadingRemote, setLoadingRemote] = useState(false);
+  const remoteOnly = remoteSuppliers.filter(
+    (remote) => !state.suppliers.some((local) => local.id === remote.id),
+  );
 
-  function addSupplier() {
+  async function loadRemoteSuppliers() {
+    setLoadingRemote(true);
+    try {
+      setRemoteSuppliers(await getRemoteSuppliers());
+    } catch (error) {
+      Alert.alert(t.common.failed, error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingRemote(false);
+    }
+  }
+
+  useEffect(() => {
+    if (online) void loadRemoteSuppliers();
+  }, [online]);
+
+  function selectSupplier(supplier: Supplier) {
+    setName(supplier.name);
+    setRegion(supplier.region);
+    onSelectSupplier(supplier.id);
+  }
+
+  function newSupplier() {
+    setName("");
+    setRegion("");
+    onSelectSupplier(null);
+  }
+
+  function saveSupplier() {
     if (!name.trim() || !region.trim()) {
       Alert.alert(t.alerts.required);
       return;
     }
     const now = new Date().toISOString();
-    const supplier: Supplier = {
-      id: createUuid(),
-      name: name.trim(),
-      region: region.trim(),
-      producerCount: 0,
-      plotCount: 0,
-      updatedAt: now,
-      syncStatus: "pending",
-    };
-    update((current) => ({
-      ...current,
-      suppliers: [supplier, ...current.suppliers],
-      outbox: [
-        ...current.outbox,
-        {
+    const existing = selectedSupplierId
+      ? state.suppliers.find((item) => item.id === selectedSupplierId) ??
+        remoteSuppliers.find((item) => item.id === selectedSupplierId)
+      : undefined;
+    const supplier: Supplier = existing
+      ? { ...existing, name: name.trim(), region: region.trim(), updatedAt: now, syncStatus: "pending" }
+      : {
           id: createUuid(),
-          idempotencyKey: createUuid(),
-          entityType: "supplier",
-          entityId: supplier.id,
-          action: "upsert",
-          payload: supplier,
-          createdAt: now,
-          attempts: 0,
-        },
-      ],
-    }));
-    setName("");
-    setRegion("");
+          name: name.trim(),
+          region: region.trim(),
+          producerCount: 0,
+          plotCount: 0,
+          updatedAt: now,
+          syncStatus: "pending",
+        };
+    update((current) => {
+      const known = current.suppliers.some((item) => item.id === supplier.id);
+      return {
+        ...current,
+        suppliers: known
+          ? current.suppliers.map((item) => (item.id === supplier.id ? supplier : item))
+          : [supplier, ...current.suppliers],
+        outbox: [
+          ...current.outbox.filter(
+            (item) => item.entityType !== "supplier" || item.entityId !== supplier.id,
+          ),
+          {
+            id: createUuid(),
+            idempotencyKey: createUuid(),
+            entityType: "supplier",
+            entityId: supplier.id,
+            action: "upsert",
+            payload: supplier,
+            createdAt: now,
+            attempts: 0,
+          },
+        ],
+      };
+    });
+    onSelectSupplier(supplier.id);
     Alert.alert(t.alerts.saved);
+  }
+
+  function renderSupplier(supplier: Supplier) {
+    const selected = supplier.id === selectedSupplierId;
+    return (
+      <Pressable
+        key={supplier.id}
+        onPress={() => selectSupplier(supplier)}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        style={[styles.card, selected && styles.cardSelected]}
+      >
+        <View style={styles.rowBetween}>
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>{supplier.name}</Text>
+            <Text style={styles.caption}>{supplier.region} · {supplier.id}</Text>
+          </View>
+          {selected ? (
+            <Ionicons name="checkmark-circle" size={22} color={palette.forest} accessibilityLabel={t.suppliers.selected} />
+          ) : null}
+          <Badge status={supplier.syncStatus} t={t} />
+        </View>
+        <Text style={styles.description}>
+          {supplier.producerCount} {t.suppliers.producerCount} · {supplier.plotCount} {t.suppliers.plotCount}
+        </Text>
+      </Pressable>
+    );
   }
 
   return (
@@ -283,42 +362,58 @@ function SuppliersScreen({
       <View style={styles.card}>
         <Field label={t.common.name} value={name} onChangeText={setName} />
         <Field label={t.common.region} value={region} onChangeText={setRegion} />
-        <Button label={t.suppliers.add} icon="person-add" onPress={addSupplier} />
+        {selectedSupplierId ? <Text style={styles.caption}>{t.suppliers.selected}: {selectedSupplierId}</Text> : null}
+        <Button
+          label={selectedSupplierId ? t.suppliers.update : t.suppliers.add}
+          icon={selectedSupplierId ? "save" : "person-add"}
+          onPress={saveSupplier}
+        />
+        {selectedSupplierId ? (
+          <Button label={t.suppliers.newSupplier} icon="add-circle" onPress={newSupplier} secondary />
+        ) : null}
       </View>
       {state.suppliers.length === 0 ? <Text style={styles.empty}>{t.suppliers.empty}</Text> : null}
-      {state.suppliers.map((supplier) => (
-        <View key={supplier.id} style={styles.card}>
-          <View style={styles.rowBetween}>
-            <View style={styles.flex}>
-              <Text style={styles.cardTitle}>{supplier.name}</Text>
-              <Text style={styles.caption}>{supplier.region} · {supplier.id}</Text>
-            </View>
-            <Badge status={supplier.syncStatus} t={t} />
-          </View>
-          <Text style={styles.description}>
-            {supplier.producerCount} {t.suppliers.producerCount} · {supplier.plotCount} {t.suppliers.plotCount}
-          </Text>
-        </View>
-      ))}
+      {state.suppliers.map(renderSupplier)}
+      {online ? (
+        <>
+          <Section title={t.suppliers.remoteTitle}>
+            <Button
+              label={loadingRemote ? `${t.suppliers.loadRemote} ...` : t.suppliers.loadRemote}
+              icon="cloud-download"
+              onPress={() => void loadRemoteSuppliers()}
+              secondary
+              disabled={loadingRemote}
+            />
+          </Section>
+          {!loadingRemote && remoteOnly.length === 0 ? (
+            <Text style={styles.empty}>{t.suppliers.remoteEmpty}</Text>
+          ) : null}
+          {remoteOnly.map(renderSupplier)}
+        </>
+      ) : null}
     </>
   );
 }
+
+const MAX_GPS_POINTS = 3;
 
 function PlotsScreen({
   state,
   update,
   t,
   organizationId,
+  selectedSupplierId,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
   organizationId: string;
+  selectedSupplierId: string | null;
 }) {
   const [producer, setProducer] = useState("");
   const [farm, setFarm] = useState("");
   const [area, setArea] = useState("");
-  const [supplierId, setSupplierId] = useState("");
+  const [supplierId, setSupplierId] = useState(selectedSupplierId ?? "");
   const [points, setPoints] = useState<Position[]>([]);
   const [geoJsonText, setGeoJsonText] = useState("");
   const [polygon, setPolygon] = useState<GeoJsonPolygon | null>(null);
@@ -335,30 +430,56 @@ function PlotsScreen({
     }
   }
 
+  function resetCapture() {
+    setPoints([]);
+    setPolygon(null);
+    setGeoJsonText("");
+  }
+
   async function capturePoint() {
+    if (points.length >= MAX_GPS_POINTS) {
+      Alert.alert(t.plots.capturePoint, t.plots.maxPoints, [
+        { text: t.plots.cancel, style: "cancel" },
+        { text: t.plots.reset, style: "destructive", onPress: resetCapture },
+      ]);
+      return;
+    }
     setLocating(true);
+    let position: Position;
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== "granted") {
         Alert.alert(t.plots.permissionError);
         return;
       }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const next: Position[] = [
-        ...points,
-        [location.coords.longitude, location.coords.latitude],
-      ];
-      setPoints(next);
-      if (next.length >= 3) {
-        const nextPolygon = closePolygon(next);
-        setPolygon(nextPolygon);
-        setGeoJsonText(JSON.stringify(nextPolygon, null, 2));
-      }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      position = [location.coords.longitude, location.coords.latitude];
+      if (!Number.isFinite(position[0]) || !Number.isFinite(position[1])) throw new Error("Invalid GPS fix.");
     } catch {
       Alert.alert(t.plots.gpsError);
+      return;
     } finally {
       setLocating(false);
     }
+
+    // iOS often returns the same cached fix; identical or collinear points cannot form a polygon.
+    if (points.some(([x, y]) => x === position[0] && y === position[1])) {
+      Alert.alert(t.plots.duplicatePoint);
+      return;
+    }
+    const next: Position[] = [...points, position];
+    if (next.length === MAX_GPS_POINTS) {
+      let nextPolygon: GeoJsonPolygon;
+      try {
+        nextPolygon = closePolygon(next);
+      } catch {
+        Alert.alert(t.plots.duplicatePoint);
+        return;
+      }
+      setPolygon(nextPolygon);
+      setGeoJsonText(JSON.stringify(nextPolygon, null, 2));
+    }
+    setPoints(next);
   }
 
   async function importGeoJson() {
@@ -426,7 +547,7 @@ function PlotsScreen({
     setProducer("");
     setFarm("");
     setArea("");
-    setSupplierId("");
+    setSupplierId(selectedSupplierId ?? "");
     setPoints([]);
     setPolygon(null);
     setGeoJsonText("");
@@ -441,7 +562,7 @@ function PlotsScreen({
         <Field label={t.plots.farm} value={farm} onChangeText={setFarm} />
         <Field label={t.plots.area} value={area} onChangeText={setArea} keyboardType="decimal-pad" />
         <Field label={t.plots.supplierId} value={supplierId} onChangeText={setSupplierId} />
-        <Text style={styles.caption}>{t.plots.pointCount}: {points.length}</Text>
+        <Text style={styles.caption}>{t.plots.pointCount}: {points.length} / {MAX_GPS_POINTS}</Text>
         <Button
           label={locating ? "GPS ..." : t.plots.capturePoint}
           icon="locate"
@@ -886,6 +1007,7 @@ function OrganizationChooser({
 export function AppView({ controller }: { controller: AppController }) {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(false);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const {
     auth,
     activeTab,
@@ -905,9 +1027,23 @@ export function AppView({ controller }: { controller: AppController }) {
     configured,
   } = controller;
 
+  const organizationId = auth.session?.selectedOrganizationId;
+  useEffect(() => setSelectedSupplierId(null), [organizationId]);
+
   const screen = useMemo(() => {
     if (!state) return null;
-    if (activeTab === "suppliers") return <SuppliersScreen state={state} update={update} t={t} />;
+    if (activeTab === "suppliers") {
+      return (
+        <SuppliersScreen
+          state={state}
+          update={update}
+          t={t}
+          online={online && configured}
+          selectedSupplierId={selectedSupplierId}
+          onSelectSupplier={setSelectedSupplierId}
+        />
+      );
+    }
     if (activeTab === "plots") {
       return (
         <PlotsScreen
@@ -915,13 +1051,14 @@ export function AppView({ controller }: { controller: AppController }) {
           update={update}
           t={t}
           organizationId={auth.session?.selectedOrganizationId ?? ""}
+          selectedSupplierId={selectedSupplierId}
         />
       );
     }
     if (activeTab === "operations") return <OperationsScreen state={state} update={update} t={t} />;
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
-  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId]);
+  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId]);
 
   if (!auth.ready && !storageError && !auth.error) {
     return (
@@ -1108,6 +1245,7 @@ const styles = StyleSheet.create({
   metricValue: { color: palette.lime, fontSize: 21, fontWeight: "900" },
   metricLabel: { color: "#FFFFFF", fontSize: 9 },
   card: { gap: 10, padding: 16, borderWidth: 1, borderColor: palette.line, borderRadius: 14, backgroundColor: palette.panel },
+  cardSelected: { borderColor: palette.forest, borderWidth: 2, backgroundColor: palette.softGreen },
   cardTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
   itemTitle: { color: palette.ink, fontSize: 12, fontWeight: "700" },
   caption: { color: palette.muted, fontSize: 9, lineHeight: 14 },

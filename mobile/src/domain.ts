@@ -234,10 +234,12 @@ function validateRing(ring: Position[]): void {
     }
   }
 
+  // Relative to the first vertex to avoid floating-point cancellation for small GPS plots.
+  const [originX, originY] = ring[0];
   let twiceArea = 0;
   for (let index = 0; index < ring.length - 1; index += 1) {
-    twiceArea += ring[index][0] * ring[index + 1][1] -
-      ring[index + 1][0] * ring[index][1];
+    twiceArea += (ring[index][0] - originX) * (ring[index + 1][1] - originY) -
+      (ring[index + 1][0] - originX) * (ring[index][1] - originY);
   }
   if (Math.abs(twiceArea) < 1e-12) throw new Error("A polygon must have a non-zero area.");
 

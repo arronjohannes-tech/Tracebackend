@@ -7,6 +7,7 @@ import type {
   OutboxOperation,
   PullResponse,
   PushResponse,
+  Supplier,
 } from "./domain";
 
 type SuccessEnvelope<T> = { data: T; meta?: Record<string, unknown> };
@@ -235,6 +236,11 @@ export async function selectOrganization(organizationId: string): Promise<AuthSe
   const session = { ...currentSession, selectedOrganizationId: organizationId };
   await updateSession(session);
   return session;
+}
+
+export async function getRemoteSuppliers(): Promise<Supplier[]> {
+  const dashboard = await request<{ suppliers?: Array<Omit<Supplier, "syncStatus">> }>("/api/v1/dashboard");
+  return (dashboard.suppliers ?? []).map((supplier) => ({ ...supplier, syncStatus: "synced" }));
 }
 
 export function getOrganizationGeofences(): Promise<OrganizationGeofence[]> {

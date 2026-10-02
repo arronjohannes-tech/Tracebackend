@@ -13,6 +13,7 @@ export type DashboardRow = {
         region: string;
         producerCount: number;
         plotCount: number;
+        revision: number;
         updatedAt: string;
     }>;
     plots: Array<{
@@ -49,9 +50,9 @@ export async function getDashboard(client: PoolClient, organizationId: string): 
       (SELECT count(*)::int FROM operational_requests WHERE organization_id = $1) AS operation_count
   `, [organizationId]);
     const suppliers = await queryMany<{
-        id: string; name: string; region: string; producer_count: number; plot_count: number; source_updated_at: Date;
+        id: string; name: string; region: string; producer_count: number; plot_count: number; revision: number; source_updated_at: Date;
     }>(client, `
-    SELECT id, name, region, producer_count, plot_count, source_updated_at
+    SELECT id, name, region, producer_count, plot_count, revision, source_updated_at
       FROM suppliers WHERE organization_id = $1 ORDER BY source_updated_at DESC LIMIT 100
   `, [organizationId]);
     const plots = await queryMany<{
@@ -75,6 +76,7 @@ export async function getDashboard(client: PoolClient, organizationId: string): 
         suppliers: suppliers.map((row) => ({
             id: row.id, name: row.name, region: row.region,
             producerCount: Number(row.producer_count), plotCount: Number(row.plot_count),
+            revision: Number(row.revision),
             updatedAt: row.source_updated_at.toISOString(),
         })),
         plots: plots.map((row) => ({
