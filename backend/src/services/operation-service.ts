@@ -12,6 +12,8 @@ import { queryOne, withContext } from "../db.js";
 import { AppError, conflict, notFound } from "../errors.js";
 import type { AuthContext } from "../types.js";
 import { EuSubmissionError, submitDds, type EuAdapterConfig } from "../soap.js";
+import { createCopernicusService, type CopernicusService, type ProcessRuntime } from "./copernicus-service.js";
+import * as copernicusRepository from "../repositories/copernicus-repository.js";
 
 export type OperationKind = "satellite" | "evidence_pack" | "dds";
 export type OperationRow = {
@@ -56,8 +58,29 @@ export function operationJson(row: OperationRow) {
     ...(row.message ? { message: row.message } : {}),
     ...(row.external_reference ? { externalReference: row.external_reference } : {}),
     phase: row.phase,
+    ...(row.kind === "satellite" && Array.isArray(row.metadata.results)
+      ? { results: satelliteResults(row) }
+      : {}),
+    ...(row.kind === "satellite" && Array.isArray(row.metadata.failures) && row.metadata.failures.length
+      ? { failures: row.metadata.failures }
+      : {}),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+type StoredSatelliteResult = { plotId: string; storagePath: string; contentType: string; bytes: number; from: string; to: string };
+function storedResults(row: OperationRow): StoredSatelliteResult[] {
+  return (row.metadata.results as StoredSatelliteResult[] | undefined) ?? [];
+}
+function satelliteResults(row: OperationRow) {
+  return storedResults(row).map(({ plotId, contentType, bytes, from, to }) => ({
+    plotId,
+    contentType,
+    bytes,
+    from,
+    to,
+    url: `/api/v1/satellite/analyses/${row.id}/images/${plotId}`,
+  }));
 }
 
 export function assertDdsActionBinding(
@@ -160,7 +183,11 @@ async function loadOperation(
 
 
 export type CreateOperationInput = z.infer<typeof createSchema>;
-export function createOperationService(pool: Pool, config: AppConfig) {
+export function createOperationService(
+  pool: Pool,
+  config: AppConfig,
+  copernicus: CopernicusService = createCopernicusService(pool, config),
+) {
  const store = createObjectStore(config);
   async function createOperation(auth: AuthContext, request: AuditContext, kind: OperationKind, body: CreateOperationInput, idempotencyKey: string): Promise<{ operation: OperationRow; created: boolean }> {
     if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
@@ -413,14 +440,72 @@ async function submit(auth: AuthContext, request: AuditContext, id: string, idem
     }
 }
 
+ async function runSatellite(auth: AuthContext, audit: AuditContext, queued: OperationRow, body: CreateOperationInput): Promise<OperationRow> {
+  const organizationId = auth.organizationId!;
+  type Prepared = { operation: OperationRow; run?: { runtime: ProcessRuntime; plots: Array<{ id: string; polygon: unknown }> } };
+  // Short transaction first: the HTTP calls to Copernicus must not hold a database connection.
+  const prepared = await withContext(pool, auth, async (client): Promise<Prepared> => {
+   const current = await loadOperation(client, organizationId, "satellite", queued.id, true);
+   if (current.status !== "queued") return { operation: current };
+   const runtime = await copernicus.loadRuntime(client, organizationId);
+   if (!runtime) {
+    return { operation: (await repository.finishAuxiliary<OperationRow>(client, current.id, "mock_screened", "Mock screening only; no satellite provider was called.", null, { provider: "safe-mock", mock: true }))! };
+   }
+   const requested = body.plotIds ?? (z.string().uuid().safeParse(body.subjectId).success ? [body.subjectId] : []);
+   const plots = requested.length ? await copernicusRepository.selectPlotPolygons(client, organizationId, requested) : [];
+   if (!plots.length) {
+    return { operation: (await copernicusRepository.finishProcess<OperationRow>(client, current.id, "failed", "no_plots", "No plots of this organization were found for the satellite analysis.", { provider: "copernicus-process" }))! };
+   }
+   const processing = (await copernicusRepository.markProcessing<OperationRow>(client, current.id, "Requesting satellite imagery from the Copernicus Process API."))!;
+   return { operation: processing, run: { runtime, plots } };
+  });
+  if (!prepared.run) return prepared.operation;
+  const { runtime, plots } = prepared.run;
+  const outcome = await copernicus.analyse(runtime, plots, async (plotId, bytes, extension) => {
+   const storagePath = `satellite/${organizationId}/${queued.id}/${plotId}.${extension}`;
+   await store.put(storagePath, bytes);
+   return storagePath;
+  });
+  const succeeded = outcome.results.length;
+  const status = succeeded > 0 ? "completed" : "failed";
+  const message = succeeded > 0
+   ? `Copernicus Process analysis finished for ${succeeded} of ${plots.length} plot(s).`
+   : `Copernicus Process analysis failed: ${outcome.failures[0]?.message ?? "no plot could be analysed."}`;
+  return withContext(pool, auth, async (client) => {
+   const row = await copernicusRepository.finishProcess<OperationRow>(client, queued.id, status, succeeded > 0 ? "analysed" : "failed", message.slice(0, 500), {
+    provider: "copernicus-process",
+    dataset: runtime.settings.dataset,
+    preset: runtime.settings.preset,
+    results: outcome.results,
+    failures: outcome.failures,
+    skippedPlotIds: outcome.skippedPlotIds,
+   });
+   await writeAudit(client, audit, auth, "satellite.process", "satellite", queued.id, {
+    plots: plots.length,
+    succeeded,
+    failed: outcome.failures.length,
+    skipped: outcome.skippedPlotIds.length,
+   });
+   return row!;
+  });
+ }
+ async function satelliteImage(auth: AuthContext, id: string, plotId: string) {
+  if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
+  const operation = await withContext(pool, auth, (client) => loadOperation(client, auth.organizationId!, "satellite", id));
+  const result = storedResults(operation).find((item) => item.plotId === plotId);
+  if (!result) throw notFound("Satellite image");
+  return { bytes: await store.get(result.storagePath), contentType: result.contentType };
+ }
+
  async function create(auth: AuthContext, audit: AuditContext, kind: OperationKind, body: CreateOperationInput, key: string) {
   const result = await createOperation(auth, audit, kind, body, key);
   let operation=result.operation;
-  if (kind !== "dds" && operation.status === "queued") {
+  if (kind === "satellite" && operation.status === "queued") {
+   operation = await runSatellite(auth, audit, operation, body);
+  } else if (kind !== "dds" && operation.status === "queued") {
    operation=await withContext(pool,auth,async client=>{
     const current=await loadOperation(client,auth.organizationId!,kind,operation.id,true);
     if(current.status!=="queued") return current;
-    if(kind==="satellite") return (await repository.finishAuxiliary<OperationRow>(client,current.id,"mock_screened","Mock screening only; no satellite provider was called.",null,{provider:"safe-mock",mock:true}))!;
     const storagePath="evidence/"+auth.organizationId+"/"+current.id+".json";
     const bytes=Buffer.from(JSON.stringify({schemaVersion:1,organizationId:auth.organizationId,subjectId:current.subject_id,notice:"Review summary only; no verified evidence attachments are included."},null,2));
     await store.put(storagePath,bytes);
@@ -439,5 +524,5 @@ async function submit(auth: AuthContext, request: AuditContext, id: string, idem
   if(operation.status!=="completed" || typeof operation.metadata.storagePath!=="string") throw notFound("Evidence pack");
   return store.get(operation.metadata.storagePath);
  }
- return {create, get, validate, submit, download};
+ return {create, get, validate, submit, download, satelliteImage};
 }

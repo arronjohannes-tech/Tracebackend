@@ -1,6 +1,6 @@
 export const tabsByRole = Object.freeze({
-  system_admin: ["users", "config", "geofences", "reviews", "reconciliation", "audit"],
-  org_admin: ["users", "config", "geofences", "reviews", "reconciliation", "audit"],
+  system_admin: ["users", "config", "copernicus", "geofences", "reviews", "reconciliation", "audit"],
+  org_admin: ["users", "config", "copernicus", "geofences", "reviews", "reconciliation", "audit"],
   reviewer: ["geofences", "reviews"],
   auditor: ["geofences", "audit"],
   field_agent: [],

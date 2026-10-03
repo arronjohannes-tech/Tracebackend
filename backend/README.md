@@ -54,7 +54,7 @@ framework preset. The production environment requires:
 - `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
 - `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for supplier invitations
 
-Apply migrations `005_supplier_invitations.sql` and `006_shipments.sql` with `npm run migrate` before deploying
+Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql` and `007_copernicus_process.sql` with `npm run migrate` before deploying
 the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
 until both mail settings are present. Invitations expire after seven days; only
 token hashes are stored, and a link can be used once. The registration page is
@@ -100,6 +100,9 @@ using those workflows in production.
 | POST | `/api/v1/documents/uploads/:id/complete` | Verify and complete upload |
 | GET | `/api/v1/documents/:id` | Tenant-authenticated download |
 | POST/GET | `/api/v1/satellite/analyses[/:id]` | Satellite operation |
+| GET | `/api/v1/satellite/analyses/:id/images/:plotId` | Image stored by a Copernicus Process run (tenant-authenticated) |
+| GET/PUT | `/api/v1/admin/organizations/:id/copernicus-process` | Organization administrators: read/update the Copernicus Process configuration |
+| POST | `/api/v1/admin/organizations/:id/copernicus-process/test` | Check the stored credentials with a 64 px Process API request (5 per minute) |
 | POST/GET | `/api/v1/evidence-packs[/:id]` | Generate/query evidence pack |
 | POST/GET | `/api/v1/dds/drafts[/:id]` | Create/query DDS draft |
 | POST | `/api/v1/dds/drafts/:id/validate` | Validate draft |
@@ -169,6 +172,30 @@ administrators can manage and reconcile; reviewers start on read-only geofences
 and can process reviews; auditors start on read-only geofences and can read audit
 history. Field agents have no Admin SPA access.
 
+## Copernicus Process API integration
+
+The satellite analysis can use the **Process** service (`POST /process/v1`) of the Copernicus Data
+Space Ecosystem / Sentinel Hub (specification: `openapi.v1.yaml`, tag group "Process API"). The
+other services of that specification (Catalog, Async, Batch, Statistics, BYOC, Zarr, TPDI) are not
+integrated.
+
+- Configure it per organization in the admin area, tab **Copernicus Process**. The settings are
+  stored in `organization_copernicus_process_config` (migration `007_copernicus_process.sql`), so the
+  existing **API / EU** configuration is unchanged. Client ID and secret (OAuth2 client credentials)
+  are encrypted with AES-256-GCM and never returned.
+- It only takes effect when `satelliteEnabled` of the existing configuration is on **and** the
+  integration is enabled with credentials. Otherwise the previous mock screening is used.
+- A satellite request (`subjectId` = plot id, or `plotIds`) requests one image per plot: the plot
+  polygon is sent as `bounds.geometry` together with its bbox, a time range of `lookbackDays` up to
+  now, and the dataset options (Sentinel-2 L2A/L1C: cloud cover, mosaicking order, harmonization;
+  Sentinel-1 GRD: acquisition mode, polarization, orbit direction, resolution, speckle filter,
+  back-scatter coefficient, orthorectification/DEM). Evalscript presets: true colour, NDVI, SAR VV or a
+  custom evalscript. Images are stored in the object store and returned in `results[]` of the operation.
+- At most `maxPlotsPerRun` plots (default 5, maximum 20) are analysed per request, one after another;
+  keep the value small because the request runs inside the HTTP call. Plots that fail are listed in
+  `failures[]`; the operation fails if no plot succeeds.
+- Only `https` hosts below `dataspace.copernicus.eu` or `sentinel-hub.com` are accepted for the Process
+  API and token URLs; redirects are rejected.
 ## Validation
 
 ```powershell

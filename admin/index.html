@@ -50,6 +50,7 @@
         <nav class="tabs" aria-label="Administration">
           <button data-tab="users" class="active">Benutzer</button>
           <button data-tab="config">API / EU</button>
+          <button data-tab="copernicus">Copernicus Process</button>
           <button data-tab="geofences">Geofences</button>
           <button data-tab="reviews">Freigaben</button>
           <button data-tab="reconciliation">DDS-Reconciliation</button>
@@ -101,6 +102,151 @@
             <label class="checkbox"><input name="clearPassword" type="checkbox"> Passwort löschen</label>
             <label class="checkbox"><input name="clearClientId" type="checkbox"> Client-ID löschen</label>
             <button type="submit">Konfiguration speichern</button>
+          </form>
+        </section>
+
+        <section id="tab-copernicus" class="card tab-panel hidden">
+          <h2>Copernicus Process API</h2>
+          <p class="hint">Sentinel-Hub-Dienst „Process“ (<code>POST /process/v1</code>) des Copernicus Data Space
+            Ecosystems. Die Integration ersetzt den Satelliten-Mock nur, wenn zusätzlich
+            „Satellitenanalyse aktiv“ im Tab „API / EU“ eingeschaltet ist. Leere Secret-Felder behalten den
+            vorhandenen Wert.</p>
+          <p id="copernicus-status" class="status-line" role="status"></p>
+          <form id="copernicus-form" class="admin-only">
+            <fieldset>
+              <legend>Zugang (OAuth2 Client Credentials)</legend>
+              <div class="form-grid">
+                <label class="checkbox"><input name="enabled" type="checkbox"> Integration aktiv</label>
+                <label>Process-API-URL<input name="baseUrl" type="url" required></label>
+                <label>Token-URL<input name="tokenUrl" type="url" required></label>
+                <label>Client-ID<input name="clientId" autocomplete="off"></label>
+                <label>Client-Secret<input name="clientSecret" type="password" autocomplete="new-password"></label>
+                <label>Timeout je Anfrage (ms)<input name="timeoutMs" type="number" min="5000" max="120000" step="1000"></label>
+                <label class="checkbox"><input name="clearClientId" type="checkbox"> Client-ID löschen</label>
+                <label class="checkbox"><input name="clearClientSecret" type="checkbox"> Client-Secret löschen</label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Daten und Auswertung</legend>
+              <div class="form-grid">
+                <label>Datensatz
+                  <select name="dataset">
+                    <option value="sentinel-2-l2a">Sentinel-2 L2A</option>
+                    <option value="sentinel-2-l1c">Sentinel-2 L1C</option>
+                    <option value="sentinel-1-grd">Sentinel-1 GRD</option>
+                  </select>
+                </label>
+                <label>Auswertung (Evalscript)
+                  <select name="preset">
+                    <option value="true_color">Echtfarbbild</option>
+                    <option value="ndvi">NDVI (Vegetationsindex)</option>
+                    <option value="sar_vv">SAR-Rückstreuung (VV)</option>
+                    <option value="custom">Eigenes Evalscript</option>
+                  </select>
+                </label>
+                <label>Zeitraum zurück (Tage)<input name="lookbackDays" type="number" min="1" max="365"></label>
+                <label>Mosaikreihenfolge
+                  <select name="mosaickingOrder">
+                    <option value="mostRecent">Neueste zuerst</option>
+                    <option value="leastRecent">Älteste zuerst</option>
+                    <option value="leastCC" data-optical-only>Wenigste Wolken</option>
+                  </select>
+                </label>
+                <label data-optical-only>Max. Wolkenbedeckung (%)<input name="maxCloudCoverage" type="number" min="0" max="100"></label>
+                <label>Max. Parzellen je Analyse<input name="maxPlotsPerRun" type="number" min="1" max="20"></label>
+              </div>
+              <label id="evalscript-field" class="hidden">Evalscript (Version 3)
+                <textarea name="evalscript" rows="10" spellcheck="false"></textarea>
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>Ausgabe</legend>
+              <div class="form-grid">
+                <label>Längste Bildseite (px)<input name="width" type="number" min="1" max="2500"></label>
+                <label>Format
+                  <select name="format">
+                    <option value="image/png">PNG</option>
+                    <option value="image/jpeg">JPEG</option>
+                    <option value="image/tiff">TIFF</option>
+                  </select>
+                </label>
+                <label>JPEG-Qualität<input name="jpegQuality" type="number" min="0" max="100"></label>
+                <label>Hochskalierung
+                  <select name="upsampling">
+                    <option value="NEAREST">Nearest</option>
+                    <option value="BILINEAR">Bilinear</option>
+                    <option value="BICUBIC">Bicubic</option>
+                  </select>
+                </label>
+                <label>Herunterskalierung
+                  <select name="downsampling">
+                    <option value="NEAREST">Nearest</option>
+                    <option value="BILINEAR">Bilinear</option>
+                    <option value="BICUBIC">Bicubic</option>
+                  </select>
+                </label>
+                <label class="checkbox" data-optical-only><input name="harmonizeValues" type="checkbox"> Werte harmonisieren (Sentinel-2)</label>
+              </div>
+            </fieldset>
+
+            <fieldset id="s1-options" class="hidden">
+              <legend>Sentinel-1 (SAR)</legend>
+              <div class="form-grid">
+                <label>Aufnahmemodus
+                  <select name="acquisitionMode">
+                    <option value="">Alle</option><option>SM</option><option>IW</option><option>EW</option>
+                    <option>WV</option><option>EN</option><option>AN</option><option>IM</option>
+                  </select>
+                </label>
+                <label>Polarisation
+                  <select name="polarization">
+                    <option value="">Alle</option><option>SH</option><option>SV</option><option>DH</option>
+                    <option>DV</option><option>HH</option><option>HV</option><option>VV</option><option>VH</option>
+                  </select>
+                </label>
+                <label>Umlaufrichtung
+                  <select name="orbitDirection">
+                    <option value="">Alle</option><option value="ASCENDING">Aufsteigend</option>
+                    <option value="DESCENDING">Absteigend</option>
+                  </select>
+                </label>
+                <label>Auflösung
+                  <select name="resolution">
+                    <option value="">Alle</option><option>HIGH</option><option>MEDIUM</option><option>FULL</option>
+                  </select>
+                </label>
+                <label>Rückstreukoeffizient
+                  <select name="backCoeff">
+                    <option>BETA0</option><option>SIGMA0_ELLIPSOID</option>
+                    <option>GAMMA0_ELLIPSOID</option><option>GAMMA0_TERRAIN</option>
+                  </select>
+                </label>
+                <label class="checkbox"><input name="orthorectify" type="checkbox"> Orthorektifizieren</label>
+                <label>DEM
+                  <select name="demInstance">
+                    <option>MAPZEN</option><option>COPERNICUS</option>
+                    <option>COPERNICUS_30</option><option>COPERNICUS_90</option>
+                  </select>
+                </label>
+                <label>Radiometrisches Terrain-Oversampling (1–4)<input name="radiometricTerrainOversampling" type="number" min="1" max="4" step="0.5"></label>
+                <label>Speckle-Filter
+                  <select name="speckleType">
+                    <option value="NONE">Kein Filter</option>
+                    <option value="LEE">Lee</option>
+                  </select>
+                </label>
+                <label>Fenster X (1–7)<input name="windowSizeX" type="number" min="1" max="7"></label>
+                <label>Fenster Y (1–7)<input name="windowSizeY" type="number" min="1" max="7"></label>
+              </div>
+            </fieldset>
+
+            <div class="actions">
+              <button type="submit">Copernicus-Konfiguration speichern</button>
+              <button type="button" id="copernicus-test" class="secondary">Verbindung testen</button>
+            </div>
+            <p id="copernicus-test-result" class="status-line" role="status"></p>
           </form>
         </section>
 

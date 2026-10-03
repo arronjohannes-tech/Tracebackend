@@ -1,4 +1,12 @@
 import { allowedTabsForRole, canAdministerOrganization } from "./roles.js";
+import {
+  presetFor,
+  settingsToValues,
+  statusText,
+  testResultText,
+  valuesToSettings,
+  visibilityFor,
+} from "./copernicus-form.js";
 
 const state = {
   accessToken: sessionStorage.getItem("accessToken"),
@@ -167,6 +175,54 @@ async function loadConfig() {
   form.clientId.placeholder = config.eu.hasClientId ? "Gespeichert (wird nicht angezeigt)" : "";
 }
 
+const copernicusPath = () => `/api/v1/admin/organizations/${state.organizationId}/copernicus-process`;
+
+function readCopernicusValues(form) {
+  const values = {};
+  for (const element of form.elements) {
+    if (!element.name) continue;
+    values[element.name] = element.type === "checkbox" ? element.checked : element.value;
+  }
+  return values;
+}
+
+function writeCopernicusValues(form, values) {
+  for (const [name, value] of Object.entries(values)) {
+    const element = form.elements[name];
+    if (!element) continue;
+    if (element.type === "checkbox") element.checked = Boolean(value);
+    else element.value = value;
+  }
+}
+
+function applyCopernicusVisibility(form) {
+  const values = readCopernicusValues(form);
+  const visibility = visibilityFor(values);
+  $("#s1-options").classList.toggle("hidden", !visibility.s1Options);
+  $("#evalscript-field").classList.toggle("hidden", !visibility.evalscript);
+  form.querySelectorAll("[data-optical-only]").forEach((element) => {
+    if (element.tagName === "OPTION") element.hidden = !visibility.optical;
+    else element.classList.toggle("hidden", !visibility.optical);
+  });
+  if (!visibility.optical && form.elements.mosaickingOrder.value === "leastCC") {
+    form.elements.mosaickingOrder.value = "mostRecent";
+  }
+}
+
+async function loadCopernicus() {
+  const config = await api(copernicusPath());
+  const form = $("#copernicus-form");
+  form.elements.enabled.checked = config.enabled;
+  writeCopernicusValues(form, settingsToValues(config.settings));
+  form.elements.clientId.value = "";
+  form.elements.clientSecret.value = "";
+  form.elements.clearClientId.checked = form.elements.clearClientSecret.checked = false;
+  form.elements.clientId.placeholder = config.hasClientId ? "Gespeichert (wird nicht angezeigt)" : "";
+  form.elements.clientSecret.placeholder = config.hasClientSecret ? "Gespeichert (wird nicht angezeigt)" : "";
+  $("#copernicus-status").textContent = statusText(config);
+  $("#copernicus-test-result").textContent = "";
+  applyCopernicusVisibility(form);
+}
 async function loadGeofences() {
   const items = await api(`/api/v1/admin/organizations/${state.organizationId}/geofences`);
   const canEdit = canAdministerOrganization(state.user?.role);
@@ -211,6 +267,7 @@ async function loadReconciliation() {
 const loaders = {
   users: loadUsers,
   config: loadConfig,
+  copernicus: loadCopernicus,
   geofences: loadGeofences,
   reviews: loadReviews,
   reconciliation: loadReconciliation,
@@ -370,6 +427,50 @@ $("#config-form").addEventListener("submit", async (event) => {
   } catch (error) { message(error.message, true); }
 });
 
+{
+  const form = $("#copernicus-form");
+  form.addEventListener("change", (event) => {
+    if (event.target.name === "dataset") {
+      form.elements.preset.value = presetFor(event.target.value, form.elements.preset.value);
+    }
+    applyCopernicusVisibility(form);
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const values = readCopernicusValues(form);
+    const secret = (field, clear) => clear ? null : field || undefined;
+    try {
+      const config = await api(copernicusPath(), {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: values.enabled,
+          clientId: secret(values.clientId, values.clearClientId),
+          clientSecret: secret(values.clientSecret, values.clearClientSecret),
+          settings: valuesToSettings(values),
+        }),
+      });
+      await loadCopernicus();
+      $("#copernicus-status").textContent = statusText(config);
+      message("Copernicus-Konfiguration gespeichert.");
+    } catch (error) { message(error.message, true); }
+  });
+
+  $("#copernicus-test").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const output = $("#copernicus-test-result");
+    button.disabled = true;
+    output.textContent = "Verbindung wird getestet…";
+    try {
+      const result = await api(`${copernicusPath()}/test`, { method: "POST" });
+      output.textContent = testResultText(result);
+      message(result.ok ? "Verbindung erfolgreich." : "Verbindungstest fehlgeschlagen.", !result.ok);
+    } catch (error) {
+      output.textContent = error.message;
+      message(error.message, true);
+    } finally { button.disabled = false; }
+  });
+}
 $("#geofence-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);

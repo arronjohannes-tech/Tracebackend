@@ -19,3 +19,12 @@ test("only administrator roles receive mutating organization controls", () => {
   assert.equal(canAdministerOrganization("reviewer"), false);
   assert.equal(canAdministerOrganization("auditor"), false);
 });
+
+test("only organization administrators can open the Copernicus Process tab", () => {
+  assert.ok(allowedTabsForRole("system_admin").includes("copernicus"));
+  assert.ok(allowedTabsForRole("org_admin").includes("copernicus"));
+  for (const role of ["reviewer", "auditor", "field_agent"]) {
+    assert.equal(allowedTabsForRole(role).includes("copernicus"), false, role);
+  }
+  assert.ok(allowedTabsForRole("org_admin").includes("config"), "existing API / EU tab stays");
+});

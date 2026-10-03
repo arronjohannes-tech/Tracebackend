@@ -16,6 +16,7 @@ import { registerSyncRoutes } from "./routes/sync.js";
 import { registerSupplierInvitationRoutes } from "./routes/supplier-invitations.js";
 import { registerDashboardRoutes } from "./controllers/dashboard-controller.js";
 import { registerShipmentRoutes } from "./controllers/shipment-controller.js";
+import { registerCopernicusRoutes } from "./controllers/copernicus-controller.js";
 
 export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyInstance> {
   const app = Fastify({
@@ -73,6 +74,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
     ["/admin/index.html", { file: "index.html", contentType: "text/html; charset=utf-8" }],
     ["/admin/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }],
     ["/admin/roles.js", { file: "roles.js", contentType: "text/javascript; charset=utf-8" }],
+    ["/admin/copernicus-form.js", { file: "copernicus-form.js", contentType: "text/javascript; charset=utf-8" }],
     ["/admin/styles.css", { file: "styles.css", contentType: "text/css; charset=utf-8" }],
   ]);
   for (const [route, asset] of adminAssets) {
@@ -103,6 +105,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   await registerDashboardRoutes(app, pool, config, authenticate);
   await registerShipmentRoutes(app, pool, config, authenticate);
   await registerAdminRoutes(app, pool, config, authenticate);
+  await registerCopernicusRoutes(app, pool, config, authenticate);
   await registerSyncRoutes(app, pool, authenticate);
   await registerSupplierInvitationRoutes(app, pool, config, authenticate);
   await registerDocumentRoutes(app, pool, config, authenticate);

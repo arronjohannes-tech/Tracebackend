@@ -1,4 +1,4 @@
-﻿
+
 import { initdb, postgres, pg_ctl } from "@embedded-postgres/windows-x64";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
@@ -56,6 +56,14 @@ try {
  assert.equal((await a.query("DELETE FROM shipments WHERE id=$1 RETURNING id",[shipment.id])).rowCount,1);
  assert.equal((await a.query("SELECT count(*)::int AS count FROM pg_policies WHERE tablename='shipments'")).rows[0].count,1);
  console.log("PASS: shipments migration enforces uniqueness, status, quantity and supplier integrity.");
+ await a.query(await readFile(new URL("../migrations/007_copernicus_process.sql",import.meta.url),"utf8"));
+ await a.query("INSERT INTO organization_copernicus_process_config(organization_id,enabled,client_id_ciphertext,client_secret_ciphertext,settings) VALUES($1,true,'v1:a','v1:b','{\"dataset\":\"sentinel-2-l2a\"}')",[invitedOrg]);
+ const copernicus=(await a.query("SELECT enabled,settings->>'dataset' AS dataset,updated_at>=created_at AS touched FROM organization_copernicus_process_config WHERE organization_id=$1",[invitedOrg])).rows[0];
+ assert.equal(copernicus.enabled,true);assert.equal(copernicus.dataset,"sentinel-2-l2a");
+ await assert.rejects(a.query("INSERT INTO organization_copernicus_process_config(organization_id) VALUES($1)",[invitedOrg]),/duplicate key|unique/);
+ assert.equal((await a.query("SELECT count(*)::int AS count FROM pg_policies WHERE tablename='organization_copernicus_process_config'")).rows[0].count,1);
+ assert.equal((await a.query("SELECT relrowsecurity AND relforcerowsecurity AS forced FROM pg_class WHERE relname='organization_copernicus_process_config'")).rows[0].forced,true);
+ console.log("PASS: Copernicus Process migration stores one tenant-scoped configuration per organization.");
  const org=randomUUID();
  await a.query("BEGIN");
  const first=(await a.query("INSERT INTO sync_changes(organization_id,payload) VALUES($1,'{}') RETURNING sequence_id",[org])).rows[0].sequence_id;
@@ -79,7 +87,7 @@ try {
  console.log("PASS: rollback gaps do not lose committed changes.");
  assert.equal(versionMatches(2,1),false);assert.equal(versionMatches(2,2),true);
  console.log("PASS: server revision comparison rejects stale edits independently of device time.");
- console.log("Integration checks: 5 passed, 0 failed. Real PostgreSQL; migrations 004-006 on minimal tables. PostGIS/full migration not covered.");
+ console.log("Integration checks: 6 passed, 0 failed. Real PostgreSQL; migrations 004-007 on minimal tables. PostGIS/full migration not covered.");
 } finally {
  await Promise.allSettled([a?.query("ROLLBACK"),b?.query("ROLLBACK")]);
  await Promise.allSettled([a?.end(),b?.end(),c?.end()]);

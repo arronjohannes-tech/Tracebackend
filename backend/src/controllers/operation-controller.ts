@@ -48,6 +48,11 @@ export async function registerOperationRoutes(
    const bytes=await service.download(authOf(request),id);
    return reply.header("Content-Type","application/json").header("Content-Disposition",`attachment; filename="evidence-pack-${id}.json"`).send(bytes);
   });
+  app.get("/api/v1/satellite/analyses/:id/images/:plotId", protectedRoute, async (request, reply) => {
+   const { id, plotId } = parse(z.object({ id: uuidSchema, plotId: uuidSchema }), request.params);
+   const image = await service.satelliteImage(authOf(request), id, plotId);
+   return reply.header("Content-Type", image.contentType).header("Cache-Control", "private, no-store").send(image.bytes);
+  });
   const getRoutes: Array<{ path: string; kind: OperationKind }> = [
     { path: "/api/v1/satellite/analyses/:id", kind: "satellite" },
     { path: "/api/v1/evidence-packs/:id", kind: "evidence_pack" },
