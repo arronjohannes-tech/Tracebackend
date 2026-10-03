@@ -116,8 +116,8 @@ export const defaultProcessSettings = (): ProcessSettings => processSettingsSche
 
 export const processConfigUpdateSchema = z.object({
   enabled: z.boolean(),
-  clientId: z.string().max(512).nullable().optional(),
-  clientSecret: z.string().max(2048).nullable().optional(),
+  clientId: z.string().trim().max(512).nullable().optional(),
+  clientSecret: z.string().trim().max(2048).nullable().optional(),
   settings: processSettingsSchema,
 });
 

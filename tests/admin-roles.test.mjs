@@ -28,3 +28,12 @@ test("only organization administrators can open the Copernicus Process tab", () 
   }
   assert.ok(allowedTabsForRole("org_admin").includes("config"), "existing API / EU tab stays");
 });
+import { testResultText } from "../admin/copernicus-form.js";
+
+test("a rejected client explains that OAuth client credentials, not a certificate, are needed", () => {
+  const text = testResultText({ ok: false, stage: "token", message: "Authentication failed (HTTP 401): Invalid client credentials" });
+  assert.match(text, /Authentifizierung fehlgeschlagen/);
+  assert.match(text, /OAuth-Client/);
+  assert.match(text, /kein|nicht benötigt/);
+  assert.doesNotMatch(testResultText({ ok: false, stage: "process", message: "Process API returned HTTP 400: x" }), /OAuth-Client/);
+});

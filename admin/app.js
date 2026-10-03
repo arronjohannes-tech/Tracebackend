@@ -439,7 +439,7 @@ $("#config-form").addEventListener("submit", async (event) => {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const values = readCopernicusValues(form);
-    const secret = (field, clear) => clear ? null : field || undefined;
+    const secret = (field, clear) => clear ? null : field.trim() || undefined;
     try {
       const config = await api(copernicusPath(), {
         method: "PUT",

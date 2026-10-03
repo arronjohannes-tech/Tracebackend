@@ -114,5 +114,8 @@ export function testResultText(result) {
     return `Verbindung erfolgreich (${result.contentType}, ${result.bytes} Byte, ${result.durationMs} ms).`;
   }
   const stage = { token: "Authentifizierung", process: "Process-Anfrage", config: "Konfiguration" }[result.stage] ?? "Test";
-  return `${stage} fehlgeschlagen: ${result.message}`;
+  const hint = result.stage === "token" && /HTTP 40[01]/.test(result.message)
+    ? " Bitte Client-ID und Client-Secret eines OAuth-Clients aus dem Copernicus-Data-Space-Dashboard verwenden (nicht Benutzername und Passwort); ein Zertifikat wird nicht benötigt."
+    : "";
+  return `${stage} fehlgeschlagen: ${result.message}${hint}`;
 }
