@@ -8,7 +8,12 @@ Eigenständige Kopie von Asteros mit überarbeiteten mobilen Backend-Abläufen.
 - [Aktueller Testbericht](docs/download/Testbericht.html)
 
 Backend: `backend/`; Web-Administration: `admin/`; mobile App: `mobile/`.
-Der statische Prototyp im Projektstamm ist eine separate Demonstration.
+Tracehub (Web-Oberfläche im Projektstamm) hat zwei Ansichten, zwischen denen im Kopfbereich gewechselt wird:
+
+- **DEMO** (`index-demo.html`, `app-demo.js`, `styles-demo.css`): statische Demonstration mit festen Demo-Daten, ohne Backend-Verbindung.
+- **PROD** (`index-prod.html`, `app-prod.js`, `styles-prod.css`): produktive Ansicht mit Anmeldung und Daten der eigenen Organisation aus dem Backend, inklusive Sendungen anlegen, ändern, anzeigen und löschen.
+
+`index.html` leitet auf die zuletzt gewählte Ansicht weiter (Standard: PROD; `?edition=demo` erzwingt die Demo). Migration `006_shipments.sql` wird für Sendungen benötigt.
 
 Node 24 verwenden. Eigene Datenbank und Umgebungsvariablen einrichten.
 Migrationen 001–004 sind vorbereitet, aber nicht auf einer produktiven Datenbank angewendet.

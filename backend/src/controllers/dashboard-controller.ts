@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config.js";
-import { authOf, organizationFor, sendData } from "../http.js";
+import { authOf, organizationFromRequest, sendData } from "../http.js";
 import { createDashboardService } from "../services/dashboard-service.js";
 
 export async function registerDashboardRoutes(
@@ -11,12 +11,8 @@ export async function registerDashboardRoutes(
     authenticate: (request: FastifyRequest) => Promise<void>,
 ): Promise<void> {
     const service = createDashboardService(pool);
-    app.get("/api/v1/dashboard", { preHandler: authenticate }, async (request, reply) => {
-        const requestedOrganization = request.headers["x-organization-id"];
-        const organizationId = organizationFor(
-            request,
-            typeof requestedOrganization === "string" ? requestedOrganization : undefined,
-        );
-        return sendData(reply, await service.get(authOf(request), organizationId));
-    });
+    app.get("/api/v1/dashboard", { preHandler: authenticate }, async (request, reply) =>
+        sendData(reply, await service.get(authOf(request), organizationFromRequest(request))));
+    app.get("/api/v1/organization", { preHandler: authenticate }, async (request, reply) =>
+        sendData(reply, await service.organization(authOf(request), organizationFromRequest(request))));
 }

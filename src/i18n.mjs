@@ -1,3 +1,5 @@
+import { prodTranslations } from "./i18n-prod.mjs";
+
 export const SUPPORTED_LANGUAGES = ["de", "en", "am"];
 
 export const translations = {
@@ -539,6 +541,10 @@ export const translations = {
     "signal.quantityCase": "120 ኪ.ግ የማብራሪያ ጉዳይ",
   },
 };
+
+for (const language of SUPPORTED_LANGUAGES) {
+  Object.assign(translations[language], prodTranslations[language]);
+}
 
 export function translate(language, key) {
   return translations[language]?.[key] ?? translations.de[key] ?? key;

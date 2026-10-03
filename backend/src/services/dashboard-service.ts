@@ -22,12 +22,23 @@ export function createDashboardService(pool: Pool) {
                     reviews: true,
                     documents: true,
                     operations: true,
-                    shipments: false,
-                    riskSignals: false,
-                    dds: false,
+                    shipments: true,
+                    riskSignals: true,
+                    dds: true,
                 },
                 ...dashboard,
             };
+        },
+
+        async organization(auth: AuthContext, organizationId: string) {
+            const privileged = auth.role === "system_admin" || auth.role === "org_admin";
+            const details = await withContext(pool, auth, (client) =>
+                repository.getOrganization(client, organizationId, {
+                    includeConfig: auth.role !== "field_agent",
+                    includeMembers: privileged,
+                }));
+            if (!details) throw new AppError(404, "NOT_FOUND", "Organization was not found.");
+            return details;
         },
     };
 }

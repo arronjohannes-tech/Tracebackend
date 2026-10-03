@@ -40,6 +40,15 @@ export function organizationFor(
   return auth.organizationId;
 }
 
+export function organizationFromRequest(request: FastifyRequest): string {
+  const query = request.query as { organizationId?: unknown } | undefined;
+  const fromQuery = query?.organizationId === undefined
+    ? undefined
+    : parse(uuidSchema, query.organizationId);
+  const header = request.headers["x-organization-id"];
+  return organizationFor(request, fromQuery ?? (typeof header === "string" ? header : undefined));
+}
+
 export function sendData<T>(reply: FastifyReply, data: T, statusCode = 200) {
   return reply.code(statusCode).send({ data });
 }

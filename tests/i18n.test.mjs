@@ -22,18 +22,49 @@ test("translation lookup resolves German, English, and Amharic", () => {
   assert.equal(translate("am", "nav.overview"), "አጠቃላይ እይታ");
 });
 
-test("all translation keys referenced by the web UI exist", async () => {
-  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
-  const keyPattern =
-    /data-(?:i18n|i18n-aria-label|i18n-content|title-key|toast-key)="([^"]+)"/g;
-  const referencedKeys = [...html.matchAll(keyPattern)].map((match) => match[1]);
+const keyPattern =
+  /data-(?:i18n|i18n-aria-label|i18n-content|title-key|toast-key)="([^"]+)"/g;
 
-  assert.ok(referencedKeys.length > 0);
+for (const page of ["index-demo.html", "index-prod.html"]) {
+  test(`all translation keys referenced by ${page} exist`, async () => {
+    const html = await readFile(new URL(`../${page}`, import.meta.url), "utf8");
+    const referencedKeys = [...html.matchAll(keyPattern)].map((match) => match[1]);
 
+    assert.ok(referencedKeys.length > 0);
+
+    for (const language of SUPPORTED_LANGUAGES) {
+      const missingKeys = referencedKeys.filter(
+        (key) => !Object.hasOwn(translations[language], key),
+      );
+      assert.deepEqual(missingKeys, [], `${language} is missing UI translation keys`);
+    }
+  });
+}
+
+test("all translation keys used by the production script exist", async () => {
+  const script = await readFile(new URL("../app-prod.js", import.meta.url), "utf8");
+  const keys = [...script.matchAll(/\bt\(\s*"([\w.]+)"/g)].map((match) => match[1]);
+  const dynamic = [
+    ...["system_admin", "org_admin", "reviewer", "field_agent", "auditor"].map((role) => `prod.role.${role}`),
+    ...["planned", "in_transit", "arrived", "cancelled"].map((status) => `prod.status.${status}`),
+    ...["pending", "inside", "outside", "review_required", "approved", "rejected"].map((status) => `prod.status.${status}`),
+    ...["queued", "processing", "completed", "failed", "not_configured", "initiated", "uploaded"].map((status) => `prod.status.${status}`),
+    ...["satellite", "evidence_pack", "dds"].map((kind) => `prod.kind.${kind}`),
+    ...["geofence", "dds"].map((type) => `prod.review.${type}`),
+  ];
+
+  assert.ok(keys.length > 40);
   for (const language of SUPPORTED_LANGUAGES) {
-    const missingKeys = referencedKeys.filter(
-      (key) => !Object.hasOwn(translations[language], key),
-    );
-    assert.deepEqual(missingKeys, [], `${language} is missing UI translation keys`);
+    const missing = [...keys, ...dynamic].filter((key) => !Object.hasOwn(translations[language], key));
+    assert.deepEqual(missing, [], `${language} is missing production UI keys`);
+  }
+});
+
+test("placeholders are identical in every language", () => {
+  const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+  for (const key of Object.keys(translations.de)) {
+    for (const language of SUPPORTED_LANGUAGES) {
+      assert.deepEqual(placeholders(translations[language][key]), placeholders(translations.de[key]), `${language}:${key}`);
+    }
   }
 });

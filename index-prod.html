@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SCTracker - kaffeefokussierte EUDR-Traceability vom Plot bis zur DDS"
+    data-i18n-content="meta.description" />
+  <title>Tracehub | Produktiv</title>
+  <link rel="stylesheet" href="styles-prod.css" />
+</head>
+
+<body data-edition="prod">
+  <section class="auth-gate" id="auth-gate">
+    <div class="auth-card">
+      <p class="eyebrow" data-i18n="prod.login.eyebrow">TRACEHUB SICHERE KONSOLE</p>
+      <h1 data-i18n="prod.login.title">Bei Tracehub anmelden</h1>
+      <p data-i18n="prod.login.intro">Melden Sie sich mit Ihrem Tracebackend-Konto an, um die Daten Ihrer Organisation
+        zu sehen.</p>
+      <form id="tracehub-login-form">
+        <label><span data-i18n="prod.login.email">E-Mail</span>
+          <input name="email" type="email" autocomplete="username" required></label>
+        <label><span data-i18n="prod.login.password">Passwort</span>
+          <input name="password" type="password" autocomplete="current-password" required></label>
+        <label><span data-i18n="prod.login.slug">Organisationskürzel (optional)</span>
+          <input name="organizationSlug" autocomplete="organization"></label>
+        <button class="primary-button full" type="submit" data-i18n="prod.login.submit">Anmelden</button>
+      </form>
+      <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+      <a class="auth-demo-link" href="index-demo.html" data-edition-link="demo"
+        data-i18n="prod.switch.demo">Zur Demo-Ansicht</a>
+    </div>
+  </section>
+
+  <div class="app-shell production-hidden" id="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="SCTracker Startseite" data-i18n-aria-label="aria.home">
+        <span class="brand-mark">SC</span>
+        <span>
+          <strong>SCTracker</strong>
+          <small>Coffee Evidence</small>
+        </span>
+      </a>
+
+      <nav aria-label="Hauptnavigation" data-i18n-aria-label="aria.navigation">
+        <a class="nav-link active" href="#overview" data-view="overview">
+          <span>01</span><span data-i18n="nav.overview">Überblick</span>
+        </a>
+        <a class="nav-link" href="#suppliers" data-view="suppliers">
+          <span>02</span><span data-i18n="nav.suppliers">Lieferanten</span>
+        </a>
+        <a class="nav-link" href="#plots" data-view="plots">
+          <span>03</span><span data-i18n="nav.plots">Parzellen</span>
+        </a>
+        <a class="nav-link" href="#shipments" data-view="shipments">
+          <span>04</span><span data-i18n="nav.shipments">Sendungen</span>
+        </a>
+        <a class="nav-link" href="#risk" data-view="risk">
+          <span>05</span><span data-i18n="nav.risk">Risiko & Evidenz</span>
+        </a>
+        <a class="nav-link" href="#dds" data-view="dds">
+          <span>06</span><span data-i18n="nav.dds">DDS</span>
+        </a>
+        <a class="nav-link" href="#guide" data-view="guide">
+          <span>07</span><span data-i18n="nav.guide">Anleitung</span>
+        </a>
+      </nav>
+
+      <button class="sidebar-note org-label" id="org-label" type="button" aria-haspopup="dialog">
+        <span class="status-dot"></span>
+        <span class="org-label-text">
+          <strong id="org-name" data-i18n="prod.org.loading">Wird geladen…</strong>
+          <small data-i18n="prod.org.label">Organisation · Produktiv</small>
+        </span>
+      </button>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" data-i18n="header.operations">EUDR-ARBEITSBEREICH</p>
+          <h1 id="page-title">Compliance Cockpit</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="language-selector" role="group" aria-label="Sprache auswählen"
+            data-i18n-aria-label="aria.language">
+            <button type="button" data-language="de" aria-pressed="true">DE</button>
+            <button type="button" data-language="en" aria-pressed="false">EN</button>
+            <button type="button" data-language="am" aria-pressed="false">አማ</button>
+          </div>
+          <div class="edition-selector" role="group" aria-label="Ansicht wählen" data-i18n-aria-label="aria.edition">
+            <a href="index-demo.html" data-edition-link="demo">DEMO</a>
+            <a href="index-prod.html" data-edition-link="prod" aria-current="page">PROD</a>
+          </div>
+          <a class="header-document-link" href="docs/SCTracker-Mobile-Testcheckliste.pdf" target="_blank"
+            rel="noopener">
+            <span data-i18n="header.mobileTest">Mobile testen</span>
+            <strong data-i18n="header.pdfChecklist">PDF-Checkliste</strong>
+          </a>
+          <button class="layout-toggle" id="layout-toggle" type="button" aria-pressed="true" title="Layout wechseln">
+            <span class="layout-toggle-dot" aria-hidden="true"></span>
+            <span id="layout-label">COMMAND</span>
+          </button>
+          <div class="account-menu">
+            <button class="avatar" id="account-toggle" type="button" aria-label="Benutzermenü" aria-expanded="false"
+              aria-controls="account-dropdown" data-i18n-aria-label="aria.userMenu">?</button>
+            <div class="account-dropdown" id="account-dropdown" hidden>
+              <div class="account-summary">
+                <strong id="account-name">—</strong>
+                <small id="account-role">—</small>
+              </div>
+              <button type="button" data-account-action="profile" data-i18n="prod.account.profile">Profil</button>
+              <button type="button" data-account-action="logout" data-i18n="prod.account.logout">Abmelden</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="view active" id="overview" data-title-key="title.overview">
+        <div class="hero">
+          <div>
+            <p class="eyebrow light" data-i18n="prod.overview.eyebrow">ORGANISATION</p>
+            <h2 id="overview-title">—</h2>
+            <p id="overview-route"></p>
+            <div class="hero-meta" id="hero-meta"></div>
+          </div>
+          <div class="score-ring" role="img" aria-label="Vollständigkeit">
+            <strong id="completion-score">0%</strong>
+            <span data-i18n="overview.complete">vollständig</span>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <a class="metric-card" href="#suppliers" data-goto="suppliers">
+            <span class="metric-label" data-i18n="prod.metric.suppliers">Lieferanten</span>
+            <strong id="metric-suppliers">0</strong>
+            <small class="positive" data-i18n="prod.metric.open">Details anzeigen →</small>
+          </a>
+          <a class="metric-card" href="#plots" data-goto="plots">
+            <span class="metric-label" data-i18n="prod.metric.plots">Parzellen</span>
+            <strong id="metric-plots">0</strong>
+            <small class="positive" data-i18n="prod.metric.open">Details anzeigen →</small>
+          </a>
+          <a class="metric-card" href="#shipments" data-goto="shipments">
+            <span class="metric-label" data-i18n="prod.metric.shipments">Sendungen</span>
+            <strong id="metric-shipments">0</strong>
+            <small class="positive" data-i18n="prod.metric.open">Details anzeigen →</small>
+          </a>
+          <a class="metric-card" href="#risk" data-goto="risk">
+            <span class="metric-label" data-i18n="prod.metric.reviews">Offene Reviews</span>
+            <strong id="metric-reviews">0</strong>
+            <small class="warning" data-i18n="prod.metric.open">Details anzeigen →</small>
+          </a>
+          <a class="metric-card" href="#dds" data-goto="dds">
+            <span class="metric-label" data-i18n="prod.metric.documents">Dokumente</span>
+            <strong id="metric-documents">0</strong>
+            <small class="positive" data-i18n="prod.metric.open">Details anzeigen →</small>
+          </a>
+        </div>
+
+        <div class="content-grid">
+          <article class="panel wide">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow" data-i18n="prod.overview.latestEyebrow">LIEFERKETTE</p>
+                <h3 data-i18n="prod.overview.latestShipments">Letzte Sendungen</h3>
+              </div>
+            </div>
+            <div class="production-table" id="lineage"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow" data-i18n="overview.nextSteps">NÄCHSTE SCHRITTE</p>
+                <h3 data-i18n="overview.worklist">Arbeitsliste</h3>
+              </div>
+              <span class="count" id="worklist-count">0</span>
+            </div>
+            <ul class="task-list" id="worklist"></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="suppliers" data-title-key="title.suppliers">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="supplier.eyebrow">LIEFERANTENERFASSUNG</p>
+            <h2 data-i18n="supplier.title">Kaffee-Lieferanten</h2>
+            <p data-i18n="supplier.description">Datenerhebung und Freigabestatus der aktuellen Beschaffungspartner.</p>
+          </div>
+          <button class="primary-button" type="button" id="invite-supplier-button" data-i18n="supplier.invite">+
+            Lieferant einladen</button>
+        </div>
+        <div class="panel table-panel">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="supplier.organization">Organisation</th>
+                <th data-i18n="supplier.country">Land</th>
+                <th data-i18n="supplier.producers">Produzenten</th>
+                <th data-i18n="supplier.plots">Parzellen</th>
+                <th data-i18n="prod.supplier.contact">Kontakt</th>
+                <th data-i18n="supplier.lastActivity">Letzte Aktivität</th>
+              </tr>
+            </thead>
+            <tbody id="suppliers-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="plots" data-title-key="title.plots">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="plot.eyebrow">GEODATENPRÜFUNG</p>
+            <h2 data-i18n="plot.title">Kaffee-Parzellen</h2>
+            <p data-i18n="plot.description">Versionierte Produktionsflächen mit deterministischen Qualitätsprüfungen.
+            </p>
+          </div>
+        </div>
+        <div class="panel table-panel">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.plot.farm">Betrieb</th>
+                <th data-i18n="prod.plot.producer">Produzent</th>
+                <th data-i18n="prod.plot.supplier">Lieferant</th>
+                <th data-i18n="prod.plot.area">Fläche (ha)</th>
+                <th data-i18n="prod.plot.geofence">Geofence</th>
+                <th data-i18n="prod.plot.captured">Erfasst</th>
+              </tr>
+            </thead>
+            <tbody id="plots-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="shipments" data-title-key="title.shipments">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="shipment.eyebrow">LIEFERKETTENHERKUNFT</p>
+            <h2 data-i18n="shipment.title">Kaffee-Sendungen</h2>
+            <p data-i18n="shipment.description">Mengenbasierte Herkunftszuordnung über Lots, Batches und
+              Transformationen.</p>
+          </div>
+          <button class="primary-button" type="button" id="new-shipment-button" data-i18n="prod.shipment.new">+ Neue
+            Sendung</button>
+        </div>
+        <div class="panel table-panel">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="shipment.shipment">Sendung</th>
+                <th data-i18n="shipment.product">Produkt</th>
+                <th data-i18n="shipment.quantity">Menge</th>
+                <th data-i18n="shipment.origin">Herkunft</th>
+                <th data-i18n="prod.shipment.supplier">Lieferant</th>
+                <th data-i18n="prod.common.status">Status</th>
+              </tr>
+            </thead>
+            <tbody id="shipments-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="risk" data-title-key="title.risk">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="risk.eyebrow">NACHVOLLZIEHBARE PRÜFUNG</p>
+            <h2 data-i18n="risk.title">Risiko- und Evidenzprüfung</h2>
+            <p data-i18n="risk.description">Getrennte Signale statt einer undurchsichtigen Gesamtampel.</p>
+          </div>
+        </div>
+        <div class="risk-grid" id="risk-grid"></div>
+        <article class="panel table-panel" id="reviews-panel">
+          <div class="panel-header table-heading">
+            <div>
+              <p class="eyebrow" data-i18n="prod.risk.reviewsEyebrow">ENTSCHEIDUNGEN</p>
+              <h3 data-i18n="prod.risk.reviewsTitle">Reviews</h3>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.review.type">Typ</th>
+                <th data-i18n="prod.review.subject">Gegenstand</th>
+                <th data-i18n="prod.review.reason">Grund</th>
+                <th data-i18n="prod.common.status">Status</th>
+                <th data-i18n="prod.common.created">Erstellt</th>
+              </tr>
+            </thead>
+            <tbody id="reviews-body"></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="view" id="dds" data-title-key="title.dds">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="dds.eyebrow">EU-INFORMATIONSSYSTEM</p>
+            <h2 data-i18n="dds.title">DDS-Vorbereitung</h2>
+            <p data-i18n="prod.dds.description">Satellitenanalysen, Evidence Packs und DDS-Entwürfe sowie Dokumente
+              Ihrer Organisation.</p>
+          </div>
+        </div>
+        <article class="panel table-panel">
+          <div class="panel-header table-heading">
+            <h3 data-i18n="prod.op.title">Vorgänge</h3>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.op.kind">Typ</th>
+                <th data-i18n="prod.op.subject">Gegenstand</th>
+                <th data-i18n="prod.common.status">Status</th>
+                <th data-i18n="prod.op.phase">Phase</th>
+                <th data-i18n="prod.common.updated">Aktualisiert</th>
+              </tr>
+            </thead>
+            <tbody id="operations-body"></tbody>
+          </table>
+        </article>
+        <article class="panel table-panel">
+          <div class="panel-header table-heading">
+            <h3 data-i18n="prod.doc.title">Dokumente</h3>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.doc.name">Datei</th>
+                <th data-i18n="prod.common.type">Typ</th>
+                <th data-i18n="prod.doc.size">Größe</th>
+                <th data-i18n="prod.common.status">Status</th>
+                <th data-i18n="prod.common.created">Erstellt</th>
+              </tr>
+            </thead>
+            <tbody id="documents-body"></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="view" id="guide" data-title-key="title.guide">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow" data-i18n="guide.eyebrow">HILFEBEREICH</p>
+            <h2 data-i18n="guide.title">Gebrauchsanweisung</h2>
+            <p data-i18n="guide.description">Die vollständige Anleitung liegt in drei Sprachen als PDF und Quelldokument
+              vor.</p>
+          </div>
+        </div>
+        <div class="language-grid">
+          <a class="language-card" href="docs/user-guide-de.md">
+            <span>DE</span>
+            <strong data-i18n="guide.german">Deutsch</strong>
+            <small data-i18n="guide.open">Gebrauchsanweisung öffnen</small>
+          </a>
+          <a class="language-card" href="docs/user-guide-en.md">
+            <span>EN</span>
+            <strong data-i18n="guide.english">English</strong>
+            <small data-i18n="guide.open">Gebrauchsanweisung öffnen</small>
+          </a>
+          <a class="language-card" href="docs/user-guide-am.md">
+            <span>አማ</span>
+            <strong data-i18n="guide.amharic">አማርኛ</strong>
+            <small data-i18n="guide.open">Gebrauchsanweisung öffnen</small>
+          </a>
+        </div>
+        <article class="panel guide-download">
+          <div>
+            <p class="eyebrow">PDF</p>
+            <h3 data-i18n="guide.manual">Dreisprachiges Handbuch</h3>
+            <p data-i18n="guide.manualDescription">Deutsch, Englisch und Amharisch in einem druckbaren Dokument.</p>
+          </div>
+          <a class="primary-button" href="docs/SCTracker-Gebrauchsanweisung-DE-EN-AM.pdf">
+            <span data-i18n="guide.openPdf">PDF öffnen</span>
+          </a>
+        </article>
+        <article class="panel guide-download">
+          <div>
+            <p class="eyebrow" data-i18n="guide.cloudEyebrow">CLOUD-ARCHITEKTUR</p>
+            <h3 data-i18n="guide.cloudTitle">Cloud-Services für SCTracker</h3>
+            <p data-i18n="guide.cloudDescription">Empfohlener Pilot-Stack, Enterprise-Alternativen, Sicherheit und
+              Kostenrahmen.</p>
+          </div>
+          <a class="primary-button" href="docs/SCTracker-Cloud-Services-Kaffee-EUDR.pdf">
+            <span data-i18n="guide.downloadPdf">PDF herunterladen</span>
+          </a>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="profile-dialog" id="profile-dialog" aria-labelledby="profile-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="prod.profile.eyebrow">BENUTZERPROFIL</p>
+        <h2 id="profile-title" data-i18n="prod.profile.title">Profil</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <div class="profile-grid">
+      <div><span data-i18n="prod.profile.name">NAME</span><strong id="profile-name">—</strong></div>
+      <div><span data-i18n="prod.profile.role">ROLLE</span><strong id="profile-role">—</strong></div>
+      <div><span data-i18n="prod.profile.email">E-MAIL</span><strong id="profile-email">—</strong></div>
+      <div><span data-i18n="prod.profile.organization">ORGANISATION</span><strong id="profile-organization">—</strong>
+      </div>
+    </div>
+    <button class="primary-button full" type="button" data-dialog-close data-i18n="prod.common.close">Schließen</button>
+  </dialog>
+
+  <dialog class="profile-dialog wide" id="org-dialog" aria-labelledby="org-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="prod.orgDetail.eyebrow">ORGANISATION</p>
+        <h2 id="org-title">—</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <div id="org-body"></div>
+    <button class="primary-button full" type="button" data-dialog-close data-i18n="prod.common.close">Schließen</button>
+  </dialog>
+
+  <dialog class="profile-dialog wide" id="detail-dialog" aria-labelledby="detail-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" id="detail-eyebrow"></p>
+        <h2 id="detail-title">—</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <dl class="detail-list" id="detail-body"></dl>
+    <div class="invite-actions" id="detail-actions"></div>
+  </dialog>
+
+  <dialog class="profile-dialog wide" id="shipment-dialog" aria-labelledby="shipment-dialog-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="prod.detail.shipment">SENDUNG</p>
+        <h2 id="shipment-dialog-title" data-i18n="prod.shipment.createTitle">Sendung anlegen</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <form id="shipment-form" class="dialog-form">
+      <div class="form-grid">
+        <label><span data-i18n="prod.shipment.reference">Referenz</span>
+          <input name="reference" required maxlength="80"></label>
+        <label><span data-i18n="prod.shipment.product">Produkt</span>
+          <input name="product" maxlength="200"></label>
+        <label><span data-i18n="prod.shipment.hsCode">HS-Code</span>
+          <input name="hsCode" maxlength="20" value="0901"></label>
+        <label><span data-i18n="prod.shipment.quantityKg">Menge (kg)</span>
+          <input name="quantityKg" type="number" min="0.001" step="0.001" required inputmode="decimal"></label>
+        <label><span data-i18n="prod.shipment.originCountry">Herkunftsland</span>
+          <input name="originCountry" maxlength="100"></label>
+        <label><span data-i18n="prod.shipment.originRegion">Herkunftsregion</span>
+          <input name="originRegion" maxlength="200"></label>
+        <label><span data-i18n="prod.shipment.supplier">Lieferant</span>
+          <select name="supplierId" id="shipment-supplier"></select></label>
+        <label><span data-i18n="prod.shipment.destination">Zielort</span>
+          <input name="destination" maxlength="200"></label>
+        <label><span data-i18n="prod.common.status">Status</span>
+          <select name="status" id="shipment-status"></select></label>
+        <label><span data-i18n="prod.shipment.expectedArrival">Erwartete Ankunft</span>
+          <input name="expectedArrival" type="date"></label>
+        <label class="form-wide"><span data-i18n="prod.shipment.notes">Notizen</span>
+          <textarea name="notes" rows="3" maxlength="4000"></textarea></label>
+      </div>
+      <p class="form-status" id="shipment-form-status" role="status" aria-live="polite"></p>
+      <div class="invite-actions">
+        <button type="button" class="secondary-button" data-dialog-close
+          data-i18n="prod.common.cancel">Abbrechen</button>
+        <button type="submit" class="primary-button" data-i18n="prod.common.save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="profile-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="prod.detail.shipment">SENDUNG</p>
+        <h2 id="confirm-title" data-i18n="prod.shipment.deleteTitle">Sendung löschen?</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <p id="confirm-text" class="dialog-text"></p>
+    <p class="form-status" id="confirm-status" role="status" aria-live="polite"></p>
+    <div class="invite-actions">
+      <button type="button" class="secondary-button" data-dialog-close
+        data-i18n="prod.common.cancel">Abbrechen</button>
+      <button type="button" class="danger-button" id="confirm-delete"
+        data-i18n="prod.shipment.deleteConfirm">Endgültig löschen</button>
+    </div>
+  </dialog>
+
+  <dialog class="profile-dialog" id="invite-supplier-dialog" aria-labelledby="invite-supplier-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="supplier.inviteEyebrow">LIEFERANTENKONTAKT</p>
+        <h2 id="invite-supplier-title" data-i18n="supplier.inviteTitle">Lieferant einladen</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="supplier.inviteClose"
+        aria-label="Schließen">×</button>
+    </div>
+    <form id="invite-supplier-form" class="dialog-form">
+      <label for="invite-supplier-name" data-i18n="supplier.inviteName">Organisation</label>
+      <input id="invite-supplier-name" name="name" required maxlength="200" autocomplete="organization">
+      <label for="invite-supplier-email" data-i18n="supplier.inviteEmail">E-Mail-Adresse</label>
+      <input id="invite-supplier-email" name="email" type="email" required autocomplete="email">
+      <p class="muted" data-i18n="supplier.inviteNotice">Der Lieferant erhält einen Link zur Registrierung. Die
+        Einladung ist sieben Tage gültig.</p>
+      <p id="invite-supplier-status" class="form-status" role="status" aria-live="polite"></p>
+      <div class="invite-actions">
+        <button type="button" class="secondary-button" data-dialog-close
+          data-i18n="supplier.inviteCancel">Abbrechen</button>
+        <button type="submit" class="primary-button" data-i18n="supplier.inviteDraft">Einladung senden</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app-prod.js?v=1"></script>
+</body>
+
+</html>

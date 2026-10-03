@@ -1,4 +1,4 @@
-
+﻿
 import { initdb, postgres, pg_ctl } from "@embedded-postgres/windows-x64";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
@@ -39,6 +39,23 @@ try {
  assert.equal((await a.query("SELECT legal_name FROM supplier_invitations WHERE token_hash='test-hash'")).rows[0].legal_name,"Coffee Union");
  assert.equal((await a.query("SELECT count(*)::int AS count FROM pg_policies WHERE tablename='supplier_invitations'")).rows[0].count,1);
  console.log("PASS: supplier invitation migration creates usable tenant-scoped invitation and supplier fields.");
+ await a.query(`CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $$;
+ ALTER TABLE suppliers ADD PRIMARY KEY (organization_id, id);`);
+ await a.query(await readFile(new URL("../migrations/006_shipments.sql",import.meta.url),"utf8"));
+ const shipmentSupplier=randomUUID();
+ await a.query("INSERT INTO suppliers(id,organization_id) VALUES($1,$2)",[shipmentSupplier,invitedOrg]);
+ const shipment=(await a.query(`INSERT INTO shipments(organization_id,reference,quantity_kg,supplier_id,expected_arrival,created_by)
+ VALUES($1,'IMP-1',18500.5,$2,'2026-12-18',$3) RETURNING id,status,to_char(expected_arrival,'YYYY-MM-DD') AS arrival`,[invitedOrg,shipmentSupplier,inviter])).rows[0];
+ assert.equal(shipment.status,"planned");assert.equal(shipment.arrival,"2026-12-18");
+ await assert.rejects(a.query("INSERT INTO shipments(organization_id,reference,quantity_kg) VALUES($1,'IMP-1',5)",[invitedOrg]),/unique/);
+ await assert.rejects(a.query("INSERT INTO shipments(organization_id,reference,quantity_kg,status) VALUES($1,'IMP-2',5,'lost')",[invitedOrg]),/check/);
+ await assert.rejects(a.query("INSERT INTO shipments(organization_id,reference,quantity_kg) VALUES($1,'IMP-3',0)",[invitedOrg]),/check/);
+ await assert.rejects(a.query("INSERT INTO shipments(organization_id,reference,quantity_kg,supplier_id) VALUES($1,'IMP-4',5,$2)",[invitedOrg,randomUUID()]),/foreign key/);
+ await a.query("UPDATE shipments SET status='arrived' WHERE id=$1",[shipment.id]);
+ assert.equal((await a.query("SELECT updated_at>created_at AS touched FROM shipments WHERE id=$1",[shipment.id])).rows[0].touched,true);
+ assert.equal((await a.query("DELETE FROM shipments WHERE id=$1 RETURNING id",[shipment.id])).rowCount,1);
+ assert.equal((await a.query("SELECT count(*)::int AS count FROM pg_policies WHERE tablename='shipments'")).rows[0].count,1);
+ console.log("PASS: shipments migration enforces uniqueness, status, quantity and supplier integrity.");
  const org=randomUUID();
  await a.query("BEGIN");
  const first=(await a.query("INSERT INTO sync_changes(organization_id,payload) VALUES($1,'{}') RETURNING sequence_id",[org])).rows[0].sequence_id;
@@ -62,7 +79,7 @@ try {
  console.log("PASS: rollback gaps do not lose committed changes.");
  assert.equal(versionMatches(2,1),false);assert.equal(versionMatches(2,2),true);
  console.log("PASS: server revision comparison rejects stale edits independently of device time.");
- console.log("Integration checks: 4 passed, 0 failed. Real PostgreSQL; migrations 004-005 on minimal tables. PostGIS/full migration not covered.");
+ console.log("Integration checks: 5 passed, 0 failed. Real PostgreSQL; migrations 004-006 on minimal tables. PostGIS/full migration not covered.");
 } finally {
  await Promise.allSettled([a?.query("ROLLBACK"),b?.query("ROLLBACK")]);
  await Promise.allSettled([a?.end(),b?.end(),c?.end()]);

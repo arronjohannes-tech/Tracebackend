@@ -54,7 +54,7 @@ framework preset. The production environment requires:
 - `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
 - `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for supplier invitations
 
-Apply migration `005_supplier_invitations.sql` with `npm run migrate` before deploying
+Apply migrations `005_supplier_invitations.sql` and `006_shipments.sql` with `npm run migrate` before deploying
 the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
 until both mail settings are present. Invitations expire after seven days; only
 token hashes are stored, and a link can be used once. The registration page is
@@ -88,6 +88,10 @@ using those workflows in production.
 | POST | `/api/v1/supplier-invitations` | Authenticated organization administrator: `{legalName,email,organizationId?}`; sends a registration link |
 | POST | `/api/v1/supplier-invitations/resolve` | Public `{token}`; validates link and returns invited organization, supplier name and email |
 | POST | `/api/v1/supplier-invitations/register` | Public `{token,legalName,tradingName,registrationNumber,taxId,countryCode,region,streetAddress,city,postalCode,contactName,contactPhone,website,password}`; creates supplier and field-agent account and returns a login session |
+| GET | `/api/v1/dashboard` | Tracehub overview: counts plus suppliers, plots, operations, documents and reviews of the organization (system administrators pass `?organizationId=`) |
+| GET | `/api/v1/organization` | Organization details with counts, API-feature flags and, for administrators, members |
+| GET/POST | `/api/v1/shipments` | List or create shipments; create needs `system_admin`, `org_admin` or `reviewer` |
+| GET/PATCH/DELETE | `/api/v1/shipments/:id` | Show, partially update (reviewer and up) or delete (administrators only) a shipment |
 | GET | `/api/v1/geofences` | Active geofences for the authenticated organization |
 | POST | `/api/v1/sync/push` | Mobile `{deviceId,operations[]}`; returns accepted/conflicts |
 | GET | `/api/v1/sync/pull?cursor=0&limit=500` | Ordered tenant changes and next cursor |
