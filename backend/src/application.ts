@@ -1,7 +1,4 @@
-import path from "node:path";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -63,21 +60,19 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   });
   await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
 
-  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const sourceAdminRoot = path.resolve(moduleDirectory, "..", "..", "admin");
-  const adminRoot = existsSync(sourceAdminRoot)
-    ? sourceAdminRoot
-    : path.resolve(moduleDirectory, "..", "..", "..", "admin");
+  // Keep each asset URL literal so Node File Trace includes the root-level admin files
+  // in the Vercel function bundle. After `npm run build`, the copy script mirrors
+  // those assets at the matching compiled location for `npm start`.
   const adminAssets = new Map([
-    ["/admin/", { file: "index.html", contentType: "text/html; charset=utf-8" }],
-    ["/admin/index.html", { file: "index.html", contentType: "text/html; charset=utf-8" }],
-    ["/admin/app.js", { file: "app.js", contentType: "text/javascript; charset=utf-8" }],
-    ["/admin/roles.js", { file: "roles.js", contentType: "text/javascript; charset=utf-8" }],
-    ["/admin/styles.css", { file: "styles.css", contentType: "text/css; charset=utf-8" }],
+    ["/admin/", { file: new URL("../../admin/index.html", import.meta.url), contentType: "text/html; charset=utf-8" }],
+    ["/admin/index.html", { file: new URL("../../admin/index.html", import.meta.url), contentType: "text/html; charset=utf-8" }],
+    ["/admin/app.js", { file: new URL("../../admin/app.js", import.meta.url), contentType: "text/javascript; charset=utf-8" }],
+    ["/admin/roles.js", { file: new URL("../../admin/roles.js", import.meta.url), contentType: "text/javascript; charset=utf-8" }],
+    ["/admin/styles.css", { file: new URL("../../admin/styles.css", import.meta.url), contentType: "text/css; charset=utf-8" }],
   ]);
   for (const [route, asset] of adminAssets) {
     app.get(route, async (_request, reply) =>
-      reply.type(asset.contentType).send(await readFile(path.join(adminRoot, asset.file))));
+      reply.type(asset.contentType).send(await readFile(asset.file)));
   }
 
   app.addHook("onSend", async (_request, reply) => {
