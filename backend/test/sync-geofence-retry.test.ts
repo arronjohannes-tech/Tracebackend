@@ -104,7 +104,7 @@ function fakeGeofenceRetryPool() {
       }
       return empty;
     },
-    release() {},
+    release() { },
   } as unknown as PoolClient;
   return {
     pool: { connect: async () => client } as unknown as Pool,

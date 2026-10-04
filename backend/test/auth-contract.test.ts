@@ -146,7 +146,7 @@ function fakeTenantPool(): Pool {
       }
       return { rows: [], rowCount: 0 } as unknown as QueryResult;
     },
-    release() {},
+    release() { },
   } as unknown as PoolClient;
   return { connect: async () => client } as unknown as Pool;
 }

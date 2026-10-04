@@ -36,7 +36,7 @@ function fakeDdsPool(phase = "draft") {
     phase,
     download_url: null,
     message: null,
-    metadata: {plotIds: [ddsId]},
+    metadata: { plotIds: [ddsId] },
     external_reference: null,
     updated_at: new Date("2026-09-14T20:00:00.000Z"),
   };
@@ -76,7 +76,7 @@ function fakeDdsPool(phase = "draft") {
         };
         return { rows: [action], rowCount: 1 } as QueryResult;
       }
-      if (text.includes("FROM plots p")) return {rows:[{id:ddsId,geofences_exist:true,covered:true,approved_hashes:[],polygon:{type:"Polygon",coordinates:[[[8,50],[9,50],[9,51],[8,50]]]}}],rowCount:1} as QueryResult;
+      if (text.includes("FROM plots p")) return { rows: [{ id: ddsId, geofences_exist: true, covered: true, approved_hashes: [], polygon: { type: "Polygon", coordinates: [[[8, 50], [9, 50], [9, 51], [8, 50]]] } }], rowCount: 1 } as QueryResult;
       if (text.includes("FROM geofence_violations")) {
         return { rows: [{ count: 0 }], rowCount: 1 } as QueryResult;
       }
@@ -98,7 +98,7 @@ function fakeDdsPool(phase = "draft") {
       }
       return empty;
     },
-    release() {},
+    release() { },
   } as unknown as PoolClient;
   return {
     pool: { connect: async () => client } as unknown as Pool,
@@ -156,7 +156,7 @@ function fakeUncertainSubmitPool() {
     phase: "validated",
     download_url: null,
     message: null,
-    metadata: {plotIds: [ddsId]},
+    metadata: { plotIds: [ddsId] },
     external_reference: null,
     updated_at: new Date("2026-09-14T20:00:00.000Z"),
   };
@@ -195,7 +195,7 @@ function fakeUncertainSubmitPool() {
         };
         return { rows: [action], rowCount: 1 } as QueryResult;
       }
-      if (text.includes("FROM plots p")) return {rows:[{id:ddsId,geofences_exist:true,covered:true,approved_hashes:[],polygon:{type:"Polygon",coordinates:[[[8,50],[9,50],[9,51],[8,50]]]}}],rowCount:1} as QueryResult;
+      if (text.includes("FROM plots p")) return { rows: [{ id: ddsId, geofences_exist: true, covered: true, approved_hashes: [], polygon: { type: "Polygon", coordinates: [[[8, 50], [9, 50], [9, 51], [8, 50]]] } }], rowCount: 1 } as QueryResult;
       if (text.includes("FROM geofence_violations")) {
         return { rows: [{ count: 0 }], rowCount: 1 } as QueryResult;
       }
@@ -232,7 +232,7 @@ function fakeUncertainSubmitPool() {
       }
       return empty;
     },
-    release() {},
+    release() { },
   } as unknown as PoolClient;
   return { connect: async () => client } as unknown as Pool;
 }
@@ -277,14 +277,14 @@ test("an uncertain DDS submit is persisted and the same key never calls SOAP twi
 });
 
 test("validate route cannot reset uncertain or processing DDS even with a new key", async () => {
- for (const phase of ["submitting", "reconciliation_required"]) {
-  const fake=fakeDdsPool(phase), app=await buildApp(config,fake.pool);
-  try {
-   const token=await signAccessToken(config,{userId,organizationId,role:"org_admin",tokenVersion:0});
-   const result=await app.inject({method:"POST",url:"/api/v1/dds/drafts/"+ddsId+"/validate",headers:{authorization:"Bearer "+token,"idempotency-key":"new-validation-key-"+phase},payload:{}});
-   assert.equal(result.statusCode,409);
-   assert.equal(result.json().error.code,"DDS_RECONCILIATION_REQUIRED");
-   assert.equal(fake.operationUpdates(),0);
-  } finally { await app.close(); }
- }
+  for (const phase of ["submitting", "reconciliation_required"]) {
+    const fake = fakeDdsPool(phase), app = await buildApp(config, fake.pool);
+    try {
+      const token = await signAccessToken(config, { userId, organizationId, role: "org_admin", tokenVersion: 0 });
+      const result = await app.inject({ method: "POST", url: "/api/v1/dds/drafts/" + ddsId + "/validate", headers: { authorization: "Bearer " + token, "idempotency-key": "new-validation-key-" + phase }, payload: {} });
+      assert.equal(result.statusCode, 409);
+      assert.equal(result.json().error.code, "DDS_RECONCILIATION_REQUIRED");
+      assert.equal(fake.operationUpdates(), 0);
+    } finally { await app.close(); }
+  }
 });

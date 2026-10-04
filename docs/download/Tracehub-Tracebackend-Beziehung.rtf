@@ -1,0 +1,87 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Calibri;}{\f1 Consolas;}}
+\viewkind4\uc1
+\pard\sa240\qc\b\fs32 Tracehub und Tracebackend\b0\fs24\par
+\pard\sa180\qc\i Beziehung zwischen Frontpage, Admin, Backend und Neon\i0\par
+\pard\sa240\qj
+\b 1. Gesamtarchitektur\b0\par
+Das Projekt besteht aus einer Benutzeroberflaeche fuer operative Uebersichten, einer geschuetzten Administrationsoberflaeche, einem zentralen Backend und einer PostgreSQL-Datenbank in Neon.\par
+\par
+\f1 Tracehub Frontpage\par
+        | /api/*\par
+        v\par
+Tracebackend Backend\par
+        | DATABASE_URL\par
+        v\par
+Neon PostgreSQL\f0\par
+\par
+\b 2. Tracehub\b0\par
+Tracehub ist die Frontpage beziehungsweise das Compliance-Cockpit. Es liegt im Repository-Stamm und besteht unter anderem aus:\par
+\bullet index.html\par
+\bullet app.js\par
+\bullet styles.css\par
+\par
+Die Oberflaeche zeigt Uebersichten zu Lieferanten, Parzellen, Sendungen, Risiken, Evidenz und DDS. Dieser Teil ist aktuell ein Web-Prototyp mit Demo-Daten. Ein Klick auf API-Pfade wird ueber eine Vercel-Rewrite-Regel an das Backend weitergeleitet.\par
+\par
+\b 3. Tracebackend Admin\b0\par
+Die Admin-Oberflaeche liegt im Ordner \f1 admin/\f0 und ist fuer geschuetzte Verwaltungsaufgaben vorgesehen. Sie verwaltet:\par
+\bullet Benutzer und Rollen\par
+\bullet Organisationen und aktive Mandanten\par
+\bullet API- und EU-EUDR-Konfiguration\par
+\bullet Geofences und Freigaben\par
+\bullet DDS-Reconciliation\par
+\bullet Audit-Informationen\par
+\par
+Die Admin-Oberflaeche verwendet echte Login- und Berechtigungsendpunkte des Backends. Sie ist nicht identisch mit der oeffentlichen Tracehub-Frontpage.\par
+\par
+\b 4. Tracebackend Backend\b0\par
+Das Verzeichnis \f1 backend/\f0 enthaelt den Fastify-Server und die API. Es uebernimmt:\par
+\bullet Login, JWT-Access-Tokens und Refresh-Tokens\par
+\bullet Backend-Sessionabmeldung und Token-Widerruf\par
+\bullet Rollen- und Mandantenpruefung\par
+\bullet Geschaeftslogik und Transaktionen\par
+\bullet Dokumente und S3-Object-Storage\par
+\bullet Mobile Synchronisation\par
+\bullet DDS-, Geofence- und Audit-Prozesse\par
+\bullet Datenbankmigrationen\par
+\par
+Das Backend ist die einzige Komponente, die direkt mit Neon und S3 kommuniziert. Browser und mobile Apps sollen keine Datenbankzugangsdaten enthalten.\par
+\par
+\b 5. Neon PostgreSQL\b0\par
+Neon ist die Datenbank. Dort werden Benutzer, Organisationen, Tokens, Geofences, Dokumentmetadaten, Synchronisationsdaten, DDS-Zustaende und Audit-Eintraege gespeichert. Die Verbindung wird ausschliesslich ueber die Backend-Variable \f1 DATABASE_URL\f0 hergestellt.\par
+\par
+\b 6. Deployment-Beziehung\b0\par
+\b Tracehub Vercel-Projekt\b0\par
+Das Projekt deployt das Repository-Stammverzeichnis. Die Datei \f1 vercel.json\f0 kann API-Pfade weiterleiten:\par
+\f1 /api/:path* -> https://<tracebackend-backend-domain>/api/:path*\f0\par
+\par
+\b Tracebackend Backend Vercel-Projekt\b0\par
+Dieses Projekt verwendet als Root Directory:\par
+\f1 backend\f0\par
+\par
+Es benoetigt unter anderem \f1 DATABASE_URL\f0, \f1 DATABASE_SSL\f0, \f1 JWT_SECRET\f0, \f1 CONFIG_ENCRYPTION_KEY\f0 und \f1 ADMIN_ORIGIN\f0 als Production-Variablen.\par
+\par
+\b 7. Authentifizierung\b0\par
+Die Admin-Oberflaeche meldet sich am Backend an. Das Backend gibt einen Access-Token und einen Refresh-Token aus. Geschuetzte API-Aufrufe senden den Access-Token als:\par
+\f1 Authorization: Bearer <access-token>\f0\par
+\par
+Bei Logout wird \f1 POST /api/v1/auth/logout\f0 aufgerufen. Das Backend widerruft die Refresh-Session. Danach werden die lokalen Tokens im Browser geloescht. Ein bereits ausgegebener Access-Token kann bis zum Ablauf gueltig bleiben.\par
+\par
+\b 8. CORS und Rewrite\b0\par
+Bei einem direkten Aufruf des Backends von einer anderen Domain muss \f1 ADMIN_ORIGIN\f0 die Frontend-Domain erlauben. Bei einer Vercel-Rewrite-Anfrage wird der Browser-Aufruf als same-origin behandelt; Vercel leitet ihn serverseitig an das Backend weiter.\par
+\par
+Die Neon-REST-URL darf nicht als Frontend-API verwendet werden. Sie ist ein Datenbankzugang beziehungsweise Data-API und ersetzt nicht die Fastify-Routen des Tracebackend-Backends.\par
+\par
+\b 9. Kurzfassung\b0\par
+\f1 Tracehub = operative Frontpage\par
+Tracebackend Admin = geschuetzte Verwaltung\par
+Tracebackend/backend = API, Sicherheit und Geschaeftslogik\par
+Neon = PostgreSQL-Datenbank\par
+S3 = private Dokumentablage\f0\par
+\par
+Die korrekte technische Kette lautet:\par
+\f1 Benutzer -> Tracehub oder Admin -> Tracebackend Backend -> Neon und S3\f0\par
+\par
+\b Sicherheitshinweis\b0\par
+Zugangsdaten aus lokalen .env-Dateien duerfen nicht in GitHub, Word-Dateien, Frontend-JavaScript oder Browsern gespeichert werden. Bereits sichtbare Zugangsdaten muessen rotiert und durch neue Vercel- beziehungsweise Secret-Manager-Variablen ersetzt werden.\par
+}
