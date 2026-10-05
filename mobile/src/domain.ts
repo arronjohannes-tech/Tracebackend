@@ -329,3 +329,51 @@ export function evaluatePlotGeofence(
     return vertices.every((position) => pointInPolygon(position, geofence.polygon));
   }) ? "inside" : "outside";
 }
+
+export type PositionGeofenceCheck =
+  | { status: "pending" }
+  | { status: "inside"; geofence: OrganizationGeofence }
+  | { status: "outside"; distanceM: number | null };
+
+const EARTH_RADIUS_M = 6_371_008.8;
+
+// Distance in metres between a point and a segment, using a local equirectangular projection
+// that is accurate enough for the short distances relevant to a field check.
+function distanceToSegmentM(point: Position, start: Position, end: Position): number {
+  const latitude = (point[1] * Math.PI) / 180;
+  const metresPerDegree = (Math.PI / 180) * EARTH_RADIUS_M;
+  const project = (position: Position): [number, number] => [
+    (position[0] - point[0]) * Math.cos(latitude) * metresPerDegree,
+    (position[1] - point[1]) * metresPerDegree,
+  ];
+  const [ax, ay] = project(start);
+  const [bx, by] = project(end);
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  const ratio = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSquared));
+  return Math.hypot(ax + ratio * dx, ay + ratio * dy);
+}
+
+export function distanceToPolygonM(point: Position, polygon: GeoJsonPolygon): number {
+  validatePolygon(polygon);
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const ring of polygon.coordinates) {
+    for (let index = 0; index < ring.length - 1; index += 1) {
+      nearest = Math.min(nearest, distanceToSegmentM(point, ring[index], ring[index + 1]));
+    }
+  }
+  return nearest;
+}
+
+// Checks one GPS fix against the organization's geofences, e.g. before a plot corner is captured.
+export function checkPositionAgainstGeofences(
+  position: Position,
+  geofences: OrganizationGeofence[],
+): PositionGeofenceCheck {
+  if (geofences.length === 0) return { status: "pending" };
+  const containing = geofences.find((geofence) => pointInPolygon(position, geofence.polygon));
+  if (containing) return { status: "inside", geofence: containing };
+  const distances = geofences.map((geofence) => distanceToPolygonM(position, geofence.polygon));
+  return { status: "outside", distanceM: Math.min(...distances) };
+}

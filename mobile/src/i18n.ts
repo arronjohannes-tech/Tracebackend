@@ -94,6 +94,12 @@ export type Translation = {
     reset: string;
     cancel: string;
     duplicatePoint: string;
+    checkLocation: string;
+    locationInside: string;
+    locationOutside: string;
+    locationDistance: string;
+    locationPending: string;
+    locationAccuracy: string;
   };
   operations: {
     title: string;
@@ -171,6 +177,11 @@ export const translations = {
       geofenceApproved: "Freigegeben", geofenceBlocked: "Lokal blockiert; das Backend entscheidet endgültig.",
       maxPoints: "Es können nur drei GPS-Punkte erfasst werden.", reset: "Reset", cancel: "Abbrechen",
       duplicatePoint: "Dieser GPS-Punkt liegt zu nah an einem bereits erfassten Punkt. Bitte einige Meter weitergehen und erneut erfassen.",
+      checkLocation: "Standort prüfen", locationInside: "Standort innerhalb des Geofence",
+      locationOutside: "Standort außerhalb aller Geofences. Eine hier erfasste Parzelle wird zur Prüfung vorgelegt.",
+      locationDistance: "bis zum nächsten Geofence",
+      locationPending: "Für diese Organisation sind keine Geofences geladen; der Standort kann nicht geprüft werden.",
+      locationAccuracy: "Genauigkeit",
     },
     operations: {
       title: "Compliance-Vorgänge", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
@@ -234,6 +245,11 @@ export const translations = {
       geofenceApproved: "Approved", geofenceBlocked: "Locally blocked; the backend remains authoritative.",
       maxPoints: "Only three GPS points can be captured.", reset: "Reset", cancel: "Cancel",
       duplicatePoint: "This GPS point is too close to a point already captured. Move a few metres and capture again.",
+      checkLocation: "Check location", locationInside: "Location is inside the geofence",
+      locationOutside: "Location is outside all geofences. A plot captured here will be submitted for review.",
+      locationDistance: "to the nearest geofence",
+      locationPending: "No geofences are loaded for this organization; the location cannot be checked.",
+      locationAccuracy: "Accuracy",
     },
     operations: {
       title: "Compliance operations", documents: "Documents", pickUpload: "Pick and upload document",
@@ -297,6 +313,11 @@ export const translations = {
       geofenceApproved: "ጸድቋል", geofenceBlocked: "በአካባቢው ታግዷል፤ የጀርባ ስርዓቱ የመጨረሻ ውሳኔ ይሰጣል።",
       maxPoints: "ሶስት GPS ነጥቦች ብቻ መመዝገብ ይቻላል።", reset: "ዳግም አስጀምር", cancel: "ሰርዝ",
       duplicatePoint: "ይህ GPS ነጥብ ቀደም ብሎ ከተመዘገበ ነጥብ ጋር በጣም ቅርብ ነው። ጥቂት ሜትሮች ተንቀሳቅሰው እንደገና ይመዝግቡ።",
+      checkLocation: "ቦታ ይፈትሹ", locationInside: "የአሁኑ ቦታ በጂኦፌንስ ውስጥ ነው",
+      locationOutside: "የአሁኑ ቦታ ከሁሉም ጂኦፌንሶች ውጭ ነው። እዚህ የተመዘገበ መሬት ለግምገማ ይቀርባል።",
+      locationDistance: "እስከ ቅርቡ ጂኦፌንስ",
+      locationPending: "ለዚህ ድርጅት ጂኦፌንስ አልተጫነም፤ ቦታው መፈተሽ አይቻልም።",
+      locationAccuracy: "ትክክለኛነት",
     },
     operations: {
       title: "የተገዢነት ሂደቶች", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
@@ -360,6 +381,11 @@ export const translations = {
       geofenceApproved: "ጸዲቑ", geofenceBlocked: "ኣብ መሳርሒ ተዓጽዩ፤ ናይ መወዳእታ ውሳነ ናይ ሰርቨር እዩ።",
       maxPoints: "ሰለስተ GPS ነጥቢ ጥራይ ክምዝገብ ይኽእል።", reset: "ዳግማይ ጀምር", cancel: "ሰርዝ",
       duplicatePoint: "እዚ GPS ነጥቢ ምስ ዝተመዝገበ ነጥቢ ኣዝዩ ቀረባ እዩ። ውሑዳት ሜትሮ ተንቀሳቐሱ ደጊምኩም መዝግቡ።",
+      checkLocation: "ቦታ ፈትሽ", locationInside: "ናይ ሕጂ ቦታ ኣብ ውሽጢ ጂኦፌንስ እዩ",
+      locationOutside: "ናይ ሕጂ ቦታ ካብ ኩሎም ጂኦፌንሳት ወጻኢ እዩ። ኣብዚ ዝተመዝገበ መሬት ንግምገማ ይቀርብ።",
+      locationDistance: "ክሳብ ዝቐረበ ጂኦፌንስ",
+      locationPending: "ንዚ ውድብ ጂኦፌንስ ኣይተጻዕነን፤ ቦታ ክፍተሽ ኣይከኣልን።",
+      locationAccuracy: "ትኽክልነት",
     },
     operations: {
       title: "መስርሓት ምኽባር ሕጊ", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",

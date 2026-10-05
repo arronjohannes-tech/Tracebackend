@@ -8,6 +8,7 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 - E-Mail-/Passwort-Login mit kurzlebigem Access Token, Refresh Token und Organisationsauswahl; Session verschlüsselt in Expo SecureStore
 - echte GeoJSON-Polygone durch mehrere GPS-Punkte sowie JSON-Import und -Bearbeitung, inklusive Bereichs-, Flächen- und Selbstüberschneidungsprüfung
 - lokale Geofence-Vorprüfung mit sichtbarem Backend-/Prüfstatus; Serverentscheidungen bleiben autoritativ
+- Standortprüfung im Vordergrund: Beim Hinzufügen eines GPS-Punkts und über „Standort prüfen" zeigt die App sofort, ob der aktuelle Standort innerhalb der Geofences der Organisation liegt (mit Name, Entfernung zum nächsten Geofence und GPS-Genauigkeit). Es wird nur der Standort bei geöffneter App genutzt; Geofencing im Hintergrund („Immer"-Freigabe) ist bewusst nicht enthalten.
 - strikt nach Benutzer und ausgewählter Organisation partitionierte AsyncStorage-Daten
 - ungescopte V3-/V2-/Legacy-Plot-Daten werden mit Quelle, Originalformat und Rohwert in `sctracker.mobileState.legacyQuarantine.v1` quarantänisiert; sie werden keinem Login zugeordnet und nie automatisch synchronisiert
 - retry-sichere Push/Pull-Synchronisierung mit UUID-/Idempotency-IDs, Outbox, Inbox-Cursor und sichtbarer Konfliktauflösung
@@ -56,6 +57,26 @@ Login/Refresh liefern unter `data` mindestens `accessToken`, `refreshToken`, `us
 geschützte Request erhält `Authorization: Bearer <accessToken>` und
 `X-Organization-Id: <id>`. Bei `401` wird einmalig aktualisiert und wiederholt.
 
+## Android
+
+iOS und Android nutzen dieselbe Codebasis (Expo, keine nativen Ordner im Repository); es gibt keine
+separate Android-Kopie. Plattformabhängig ist nur Weniges (Statusleisten-Abstand, Schriftfamilien,
+Öffnen lokaler Dokumente über das Android-Teilen-Menü statt `file://`-Links).
+
+Builds (EAS, Paket `com.ajohannes.tracebackend`):
+
+```powershell
+# APK zum direkten Installieren/Testen (interne Verteilung)
+npx eas build --platform android --profile preview
+
+# AAB für den Play Store
+npx eas build --platform android --profile production
+```
+
+Der Android-Signaturschlüssel (Keystore) liegt bei EAS; Builds laufen mit `--non-interactive`. Für die
+Veröffentlichung im Play Store wird zusätzlich ein Google-Play-Konto mit Service-Account-Schlüssel
+benötigt (`eas submit`); die erste Version muss im Play Console einmal manuell angelegt werden.
+Lokale Prüfung des Android-Bundles: `npm run export:android`.
 ## Legacy-Quarantäne
 
 Ungescopte Daten aus `sctracker.mobileState.v3`, `sctracker.mobileState.v2` und

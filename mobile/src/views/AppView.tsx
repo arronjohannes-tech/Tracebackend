@@ -32,6 +32,7 @@ import {
   validateDds,
 } from "../api";
 import {
+  checkPositionAgainstGeofences,
   closePolygon,
   createUuid,
   evaluatePlotGeofence,
@@ -41,6 +42,7 @@ import {
   type PersistedState,
   type Plot,
   type Position,
+  type PositionGeofenceCheck,
   type Supplier,
   type SyncConflict,
 } from "../domain";
@@ -203,6 +205,43 @@ function GeofenceBadge({
       <Text style={[styles.badgeText, good && styles.goodText, blocked && styles.badText]}>
         {t.plots.geofence}: {labels[status]}
       </Text>
+    </View>
+  );
+}
+
+function formatDistance(metres: number): string {
+  return metres < 1000 ? `${Math.max(1, Math.round(metres))} m` : `${(metres / 1000).toFixed(1)} km`;
+}
+
+function LocationFix({
+  fix,
+  t,
+}: {
+  fix: { check: PositionGeofenceCheck; accuracyM: number | null };
+  t: Translation;
+}) {
+  const { check, accuracyM } = fix;
+  const accuracy = accuracyM === null ? "" : `${t.plots.locationAccuracy}: ±${Math.round(accuracyM)} m`;
+  if (check.status === "pending") {
+    return (
+      <View accessibilityLiveRegion="polite" style={styles.fixBox}>
+        <Text style={styles.fixText}>{t.plots.locationPending}</Text>
+        {accuracy ? <Text style={styles.caption}>{accuracy}</Text> : null}
+      </View>
+    );
+  }
+  const inside = check.status === "inside";
+  return (
+    <View accessibilityLiveRegion="assertive" style={[styles.fixBox, inside ? styles.fixGood : styles.fixBad]}>
+      <Text style={[styles.fixText, inside ? styles.goodText : styles.badText]}>
+        {inside
+          ? `${t.plots.locationInside}${check.geofence.name ? ` · ${check.geofence.name}` : ""}`
+          : t.plots.locationOutside}
+      </Text>
+      {!inside && check.distanceM !== null ? (
+        <Text style={styles.caption}>≈ {formatDistance(check.distanceM)} {t.plots.locationDistance}</Text>
+      ) : null}
+      {accuracy ? <Text style={styles.caption}>{accuracy}</Text> : null}
     </View>
   );
 }
@@ -477,6 +516,7 @@ function PlotsScreen({
   const [geoJsonText, setGeoJsonText] = useState("");
   const [polygon, setPolygon] = useState<GeoJsonPolygon | null>(null);
   const [locating, setLocating] = useState(false);
+  const [fix, setFix] = useState<{ check: PositionGeofenceCheck; accuracyM: number | null } | null>(null);
 
   function applyPolygonText(value = geoJsonText) {
     try {
@@ -493,6 +533,46 @@ function PlotsScreen({
     setPoints([]);
     setPolygon(null);
     setGeoJsonText("");
+    setFix(null);
+  }
+
+  async function readPosition(): Promise<{ position: Position; accuracyM: number | null } | null> {
+    setLocating(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert(t.plots.permissionError);
+        return null;
+      }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const position: Position = [location.coords.longitude, location.coords.latitude];
+      if (!Number.isFinite(position[0]) || !Number.isFinite(position[1])) throw new Error("Invalid GPS fix.");
+      const accuracy = location.coords.accuracy;
+      return { position, accuracyM: typeof accuracy === "number" && Number.isFinite(accuracy) ? accuracy : null };
+    } catch {
+      Alert.alert(t.plots.gpsError);
+      return null;
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  function showFix({ position, accuracyM }: { position: Position; accuracyM: number | null }) {
+    let check: PositionGeofenceCheck;
+    try {
+      check = checkPositionAgainstGeofences(
+        position,
+        state.geofences.filter((item) => item.organizationId === organizationId),
+      );
+    } catch {
+      check = { status: "pending" };
+    }
+    setFix({ check, accuracyM });
+  }
+
+  async function checkLocation() {
+    const result = await readPosition();
+    if (result) showFix(result);
   }
 
   async function capturePoint() {
@@ -503,23 +583,10 @@ function PlotsScreen({
       ]);
       return;
     }
-    setLocating(true);
-    let position: Position;
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") {
-        Alert.alert(t.plots.permissionError);
-        return;
-      }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      position = [location.coords.longitude, location.coords.latitude];
-      if (!Number.isFinite(position[0]) || !Number.isFinite(position[1])) throw new Error("Invalid GPS fix.");
-    } catch {
-      Alert.alert(t.plots.gpsError);
-      return;
-    } finally {
-      setLocating(false);
-    }
+    const fixResult = await readPosition();
+    if (!fixResult) return;
+    const position = fixResult.position;
+    showFix(fixResult);
 
     // iOS often returns the same cached fix; identical or collinear points cannot form a polygon.
     if (points.some(([x, y]) => x === position[0] && y === position[1])) {
@@ -610,6 +677,7 @@ function PlotsScreen({
     setPoints([]);
     setPolygon(null);
     setGeoJsonText("");
+    setFix(null);
     Alert.alert(t.alerts.saved);
   }
 
@@ -629,6 +697,14 @@ function PlotsScreen({
           secondary
           disabled={locating}
         />
+        <Button
+          label={t.plots.checkLocation}
+          icon="shield-checkmark"
+          onPress={() => void checkLocation()}
+          secondary
+          disabled={locating}
+        />
+        {fix ? <LocationFix fix={fix} t={t} /> : null}
         <Button label={t.plots.importGeoJson} icon="document-attach" onPress={() => void importGeoJson()} secondary />
         <Field
           label={t.plots.polygonJson}
@@ -730,6 +806,16 @@ function OperationsScreen({
   }
 
   async function openLocalDocument(uri: string) {
+    // Android does not allow file:// URIs in intents; the share sheet hands out a FileProvider URI.
+    if (Platform.OS === "android" && (await Sharing.isAvailableAsync())) {
+      try {
+        await Sharing.shareAsync(uri, { mimeType: "application/json" });
+        return;
+      } catch {
+        Alert.alert(t.common.download, uri);
+        return;
+      }
+    }
     try {
       await Linking.openURL(uri);
       return;
@@ -1473,6 +1559,10 @@ const styles = StyleSheet.create({
   cardTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
   itemTitle: { color: palette.ink, fontSize: 12, fontWeight: "700" },
   caption: { color: palette.muted, fontSize: 9, lineHeight: 14 },
+  fixBox: { gap: 4, padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 9, backgroundColor: "#FFFFFF" },
+  fixGood: { borderColor: palette.forest, backgroundColor: palette.softGreen },
+  fixBad: { borderColor: palette.red, backgroundColor: palette.softRed },
+  fixText: { color: palette.ink, fontSize: 10, fontWeight: "700", lineHeight: 15 },
   label: { marginBottom: 5, color: palette.ink, fontSize: 10, fontWeight: "700" },
   input: { minHeight: 45, paddingHorizontal: 12, borderWidth: 1, borderColor: palette.line, borderRadius: 9, color: palette.ink, backgroundColor: "#FFFFFF", fontSize: 12 },
   textArea: { minHeight: 130, paddingTop: 10, fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }), textAlignVertical: "top" },
