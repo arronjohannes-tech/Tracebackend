@@ -51,6 +51,12 @@ test("all translation keys used by the production script exist", async () => {
     ...["queued", "processing", "completed", "failed", "not_configured", "initiated", "uploaded"].map((status) => `prod.status.${status}`),
     ...["satellite", "evidence_pack", "dds"].map((kind) => `prod.kind.${kind}`),
     ...["geofence", "dds"].map((type) => `prod.review.${type}`),
+    ...["pending", "inside", "outside", "review_required", "approved"].map((status) => `prod.val.geofence.${status}`),
+    ...["open", "resolved"].map((status) => `prod.status.${status}`),
+    ...["plot", "group", "all"].map((scope) => `prod.corr.scope.${scope}`),
+    ...["supplier", "producer"].map((type) => `prod.corr.group.${type}`),
+    ...["geometry", "area", "geofence", "duplicate", "evidence", "other"].map((category) => `prod.corr.category.${category}`),
+    ...["ok", "fail", "pending"].map((tone) => `prod.pv.legend.${tone}`),
   ];
 
   assert.ok(keys.length > 40);

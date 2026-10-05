@@ -6,8 +6,15 @@ import {
 } from "./src/i18n.mjs?v=1";
 import { format } from "./src/i18n-prod.mjs?v=1";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
+import {
+  buildMapSvg, groupOptions, plotTone, plotsInGroup,
+} from "./src/plot-map.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
+const CORRECTION_SCOPES = ["plot", "group", "all"];
+const CORRECTION_GROUP_TYPES = ["supplier", "producer"];
+const CORRECTION_CATEGORIES = ["geometry", "area", "geofence", "duplicate", "evidence", "other"];
+const CHECK_GLYPH = { ok: "✓", fail: "!", pending: "·" };
 const WRITE_ROLES = ["system_admin", "org_admin", "reviewer"];
 const ADMIN_ROLES = ["system_admin", "org_admin"];
 const STATUS_TONE = {
@@ -15,10 +22,10 @@ const STATUS_TONE = {
   pending: "neutral", inside: "success", approved: "success", outside: "warning",
   review_required: "warning", rejected: "danger", queued: "neutral", processing: "neutral",
   completed: "success", failed: "danger", not_configured: "warning", initiated: "neutral",
-  uploaded: "neutral",
+  uploaded: "neutral", open: "warning", resolved: "success",
 };
 const DETAIL_VIEW = {
-  supplier: "suppliers", plot: "plots", shipment: "shipments",
+  supplier: "suppliers", correction: "plots", shipment: "shipments",
   review: "risk", operation: "dds", document: "dds",
 };
 
@@ -36,6 +43,10 @@ const state = {
   organization: null,
   dashboard: null,
   shipments: [],
+  plots: [],
+  plotsFailed: false,
+  corrections: [],
+  plotTab: "all",
   editingShipmentId: null,
   deletingShipmentId: null,
 };
@@ -188,6 +199,10 @@ function showLogin() {
   state.dashboard = null;
   state.organization = null;
   state.shipments = [];
+  state.plots = [];
+  state.plotsFailed = false;
+  state.corrections = [];
+  state.plotTab = "all";
   state.user = null;
   state.organizationId = null;
   $$("dialog[open]").forEach((dialog) => dialog.close());
@@ -213,11 +228,23 @@ async function resolveOrganization() {
 }
 
 async function reloadData() {
-  [state.dashboard, state.shipments, state.organization] = await Promise.all([
+  // Geometries and corrections are optional: the rest of the workspace stays usable if they fail to load.
+  const optional = (path) => api(path).catch((error) => {
+    if (error.status === 401) throw error;
+    return null;
+  });
+  let plots;
+  let corrections;
+  [state.dashboard, state.shipments, state.organization, plots, corrections] = await Promise.all([
     api("/api/v1/dashboard"),
     api("/api/v1/shipments"),
     api("/api/v1/organization"),
+    optional("/api/v1/plots"),
+    optional("/api/v1/plot-corrections"),
   ]);
+  state.plotsFailed = plots === null || corrections === null;
+  state.plots = plots ?? [];
+  state.corrections = corrections ?? [];
 }
 
 async function loadWorkspace() {
@@ -339,19 +366,196 @@ function renderSuppliers() {
     : emptyRow(6, "prod.supplier.empty");
 }
 
+const scopeText = (correction) => {
+  if (correction.scope === "group") {
+    return `${labelFor("prod.corr.group", correction.groupType)}: ${correction.groupLabel}`;
+  }
+  if (correction.scope === "plot") {
+    const plot = state.plots.find((item) => item.id === correction.plots[0]?.plotId);
+    return `${t("prod.corr.scope.plot")}${plot ? `: ${plot.farmName}` : ""}`;
+  }
+  return t("prod.corr.scope.all");
+};
+
+function selectPlotTab(tab) {
+  state.plotTab = tab;
+  renderPlots();
+}
+
+function openPlotTab(id) {
+  $$("dialog[open]").forEach((dialog) => dialog.close());
+  history.replaceState(null, "", "#plots");
+  showView("plots");
+  selectPlotTab(id);
+  window.scrollTo({ top: 0 });
+}
+
+function renderPlotTabs() {
+  const tab = (id, label, { tone = "", flag = false, hint = "" } = {}) => {
+    const active = id === state.plotTab;
+    return `<button type="button" role="tab" class="plot-tab${active ? " active" : ""}" data-plot-tab="${escapeHtml(id)}"
+        aria-selected="${active}" tabindex="${active ? 0 : -1}" title="${escapeHtml(hint || label)}">
+        ${tone ? `<i class="tone-dot ${tone}"></i>` : ""}<span>${escapeHtml(label)}</span>
+        ${flag ? `<em class="tab-flag" aria-hidden="true">!</em>` : ""}</button>`;
+  };
+  $("#plot-tabs").innerHTML = tab("all", `${t("prod.pv.all")} (${formatNumber(state.plots.length, 0)})`)
+    + state.plots.map((plot) => tab(plot.id, plot.farmName, {
+      tone: plotTone(plot),
+      flag: plot.openCorrectionCount > 0,
+      hint: `${plot.farmName} · ${plot.producer} · ${shortId(plot.id)}`,
+    })).join("");
+}
+
 function renderPlots() {
-  const { plots } = state.dashboard;
-  $("#plots-body").innerHTML = plots.length
-    ? plots.map((plot) => `
-        <tr data-detail="plot" data-id="${escapeHtml(plot.id)}" tabindex="0">
+  if (!state.dashboard) return;
+  const plot = state.plots.find((item) => item.id === state.plotTab);
+  if (!plot) state.plotTab = "all";
+  $("#plots-all").hidden = Boolean(plot);
+  $("#plot-pane").hidden = !plot;
+  renderPlotTabs();
+  if (plot) renderPlotPane(plot);
+  else renderPlotsOverview();
+}
+
+function renderPlotsOverview() {
+  const { plots, corrections } = state;
+  const tableRows = plots.length || !state.plotsFailed ? plots : state.dashboard.plots;
+  const message = !plots.length
+    ? `<div class="live-empty map-empty">${escapeHtml(t(state.plotsFailed ? "prod.pv.loadFailed" : "prod.plot.empty"))}</div>`
+    : "";
+  const legend = ["ok", "fail", "pending"].map((tone) =>
+    `<span><i class="${tone}"></i>${escapeHtml(t(`prod.pv.legend.${tone}`))}</span>`).join("");
+  $("#plots-map").innerHTML = `<span class="terrain terrain-one"></span><span class="terrain terrain-two"></span>
+    ${buildMapSvg(plots, { interactive: true, numbers: "index" }, escapeHtml)}${message}
+    <div class="map-key"><strong>${escapeHtml(t("prod.pv.count", { n: formatNumber(plots.length, 0) }))}</strong>${legend}</div>`;
+
+  const checkRow = (tone, text) =>
+    `<div><span class="check ${tone}">${CHECK_GLYPH[tone]}</span><span>${escapeHtml(text)}</span></div>`;
+  const openRequests = corrections.filter((item) => item.status === "open").length;
+  $("#plots-summary-title").textContent = t("prod.pv.summaryOpen", { n: formatNumber(openRequests, 0) });
+  $("#plots-summary").innerHTML = [
+    checkRow("ok", t("prod.pv.summaryClean", { n: plots.filter((item) => plotTone(item) === "ok").length })),
+    checkRow("fail", t("prod.pv.summaryIssues", { n: plots.filter((item) => plotTone(item) === "fail").length })),
+    checkRow("pending", t("prod.pv.summaryOpenPlots", { n: plots.filter((item) => item.openCorrectionCount > 0).length })),
+  ].join("");
+  $("#request-all-button").hidden = !canWrite() || !plots.length;
+  $("#request-group-button").hidden = !canWrite()
+    || !CORRECTION_GROUP_TYPES.some((type) => groupOptions(plots, type).length);
+
+  $("#plots-body").innerHTML = tableRows.length
+    ? tableRows.map((plot) => `
+        <tr data-plot-tab="${escapeHtml(plot.id)}" tabindex="0">
           <td><strong>${escapeHtml(plot.farmName)}</strong><small>${escapeHtml(shortId(plot.id))}</small></td>
           <td>${escapeHtml(plot.producer)}</td>
           <td>${escapeHtml(plot.supplierName ?? "—")}</td>
           <td>${formatNumber(plot.areaHa, 4)}</td>
           <td>${statusBadge(plot.geofenceStatus)}</td>
           <td>${escapeHtml(formatDate(plot.capturedAt))}</td>
+          <td>${plot.openCorrectionCount > 0 ? statusBadge("open") : "—"}</td>
         </tr>`).join("")
-    : emptyRow(6, "prod.plot.empty");
+    : emptyRow(7, "prod.plot.empty");
+
+  $("#corrections-body").innerHTML = corrections.length
+    ? corrections.map((correction) => `
+        <tr data-detail="correction" data-id="${escapeHtml(correction.id)}" tabindex="0">
+          <td>${statusBadge(correction.status)}</td>
+          <td>${escapeHtml(scopeText(correction))}</td>
+          <td>${escapeHtml(labelFor("prod.corr.category", correction.category))}</td>
+          <td class="cell-message">${escapeHtml(correction.message)}</td>
+          <td>${escapeHtml(t("prod.corr.openOf", { n: correction.openPlotCount, m: correction.plotCount }))}</td>
+          <td>${escapeHtml(formatDateTime(correction.createdAt))}</td>
+        </tr>`).join("")
+    : emptyRow(6, "prod.corr.empty");
+}
+
+function validationRows(plot) {
+  const v = plot.validation;
+  const row = (checkState, text) =>
+    `<div><span class="check ${checkState}">${CHECK_GLYPH[checkState]}</span><span>${escapeHtml(text)}</span></div>`;
+  const eoText = { ok: t("prod.val.eo.ok"), fail: t("prod.val.eo.fail"), pending: t("plot.eoPending") };
+  return [
+    row(v.geofence.state, labelFor("prod.val.geofence", v.geofence.status)),
+    row(v.area.state, v.area.state === "ok"
+      ? t("prod.val.area.ok", { ha: formatNumber(v.area.storedHa, 2) })
+      : t("prod.val.area.fail", { stored: formatNumber(v.area.storedHa, 2), computed: formatNumber(v.area.computedHa, 2) })),
+    row(v.selfIntersection.state, v.selfIntersection.state === "ok"
+      ? t("prod.val.self.ok") : t("plot.selfIntersection")),
+    row(v.duplicate.state, v.duplicate.state === "ok"
+      ? t("plot.noDuplicate") : t("prod.val.dup.fail", { n: v.duplicate.count })),
+    row(v.eo.state, eoText[v.eo.state]),
+  ].join("");
+}
+
+function renderPlotPane(plot) {
+  const tone = plotTone(plot);
+  const key = plot.centroid ? `${plot.centroid.lat.toFixed(5)}, ${plot.centroid.lng.toFixed(5)}` : plot.farmName;
+  const requests = state.corrections.filter((item) => item.plots.some((entry) => entry.plotId === plot.id));
+  const actions = (request, entry) => (canWrite() && entry.status === "open"
+    ? `<div class="row-actions">
+        <button type="button" class="secondary-button" data-correction-close data-request-id="${escapeHtml(request.id)}"
+          data-plot-id="${escapeHtml(plot.id)}" data-status="resolved">${escapeHtml(t("prod.corr.resolve"))}</button>
+        <button type="button" class="danger-button" data-correction-close data-request-id="${escapeHtml(request.id)}"
+          data-plot-id="${escapeHtml(plot.id)}" data-status="cancelled">${escapeHtml(t("prod.corr.cancel"))}</button>
+      </div>` : "");
+  const requestRows = requests.map((request) => {
+    const entry = request.plots.find((item) => item.plotId === plot.id);
+    return `
+        <tr>
+          <td>${statusBadge(entry.status)}</td>
+          <td>${escapeHtml(labelFor("prod.corr.category", request.category))}</td>
+          <td class="cell-message">${escapeHtml(request.message)}${entry.status === "open" && entry.plotUpdated
+            ? `<small class="plot-updated">${escapeHtml(t("prod.corr.plotUpdated"))}</small>` : ""}</td>
+          <td><strong>${escapeHtml(scopeText(request))}</strong><small>${escapeHtml(request.requestedBy?.displayName ?? "—")}</small></td>
+          <td>${escapeHtml(formatDateTime(request.createdAt))}</td>
+          <td>${actions(request, entry)}</td>
+        </tr>`;
+  }).join("");
+  $("#plot-pane").innerHTML = `
+    <div class="map-layout">
+      <article class="map-card">
+        <div class="map-placeholder" role="img" aria-label="${escapeHtml(t("prod.pv.mapOne", { name: plot.farmName }))}">
+          <span class="terrain terrain-one"></span><span class="terrain terrain-two"></span>
+          ${buildMapSvg([plot], { vertices: true }, escapeHtml)}
+          <div class="map-key"><i class="${tone}"></i> ${escapeHtml(key)}</div>
+        </div>
+      </article>
+      <article class="panel">
+        <p class="eyebrow">${escapeHtml(t("plot.validationResult"))}</p>
+        <h3>${escapeHtml(plot.farmName)}</h3>
+        <div class="validation-list">${validationRows(plot)}</div>
+        ${canWrite() ? `<button class="secondary-button" type="button" data-correction-plot="${escapeHtml(plot.id)}">
+          <span>${escapeHtml(t("plot.requestCorrection"))}</span></button>` : ""}
+      </article>
+    </div>
+    <article class="panel">
+      <p class="eyebrow">${escapeHtml(t("prod.pv.facts"))}</p>
+      <dl class="detail-list">${detailRows([
+        [t("prod.plot.producer"), plot.producer],
+        [t("prod.plot.supplier"), plot.supplierName],
+        [t("prod.plot.area"), formatNumber(plot.areaHa, 4)],
+        [t("prod.plot.geofence"), statusBadge(plot.geofenceStatus), true],
+        [t("prod.plot.localResult"), statusBadge(plot.localGeofenceResult), true],
+        [t("prod.plot.position"), plot.centroid ? key : ""],
+        [t("prod.plot.captured"), formatDateTime(plot.capturedAt)],
+        [t("prod.plot.revision"), String(plot.revision)],
+        [t("prod.common.updated"), formatDateTime(plot.updatedAt)],
+        [t("prod.common.id"), plot.id],
+      ])}</dl>
+    </article>
+    <article class="panel table-panel">
+      <div class="panel-header table-heading"><h3>${escapeHtml(t("prod.corr.title"))}</h3></div>
+      <table>
+        <thead><tr>
+          <th>${escapeHtml(t("prod.common.status"))}</th>
+          <th>${escapeHtml(t("prod.corr.category"))}</th>
+          <th>${escapeHtml(t("prod.corr.message"))}</th>
+          <th>${escapeHtml(t("prod.corr.scope"))}</th>
+          <th>${escapeHtml(t("prod.common.created"))}</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${requestRows || emptyRow(6, "prod.corr.emptyPlot")}</tbody>
+      </table>
+    </article>`;
 }
 
 function renderShipments() {
@@ -484,22 +688,32 @@ function buildDetail(kind, id) {
       ],
     };
   }
-  if (kind === "plot") {
-    const p = dashboard.plots.find((item) => item.id === id);
-    if (!p) return null;
+  if (kind === "correction") {
+    const c = state.corrections.find((item) => item.id === id);
+    if (!c) return null;
+    const plotList = `<ul class="plain-list">${c.plots.map((entry) => {
+      const plot = state.plots.find((item) => item.id === entry.plotId);
+      return `<li><button type="button" class="link-button" data-plot-tab="${escapeHtml(entry.plotId)}">${escapeHtml(plot?.farmName ?? shortId(entry.plotId))}</button>
+        ${statusBadge(entry.status)}</li>`;
+    }).join("")}</ul>`;
+    const open = canWrite() && c.status === "open";
     return {
-      eyebrow: t("prod.detail.plot"), title: p.farmName,
+      eyebrow: t("prod.detail.correction"), title: scopeText(c),
       rows: [
-        [t("prod.plot.producer"), p.producer],
-        [t("prod.plot.supplier"), p.supplierName],
-        [t("prod.plot.area"), formatNumber(p.areaHa, 4)],
-        [t("prod.plot.geofence"), statusBadge(p.geofenceStatus), true],
-        [t("prod.plot.localResult"), statusBadge(p.localGeofenceResult), true],
-        [t("prod.plot.position"), p.centroid ? `${p.centroid.lat.toFixed(5)}, ${p.centroid.lng.toFixed(5)}` : ""],
-        [t("prod.plot.captured"), formatDateTime(p.capturedAt)],
-        [t("prod.plot.revision"), String(p.revision)],
-        [t("prod.common.updated"), formatDateTime(p.updatedAt)],
-        [t("prod.common.id"), p.id],
+        [t("prod.common.status"), statusBadge(c.status), true],
+        [t("prod.corr.category"), labelFor("prod.corr.category", c.category)],
+        [t("prod.corr.message"), c.message],
+        [t("prod.corr.plots"), plotList, true],
+        [t("prod.corr.requestedBy"), c.requestedBy?.displayName],
+        [t("prod.common.created"), formatDateTime(c.createdAt)],
+        c.resolvedAt && [t("prod.corr.resolvedBy"), c.resolvedBy],
+        c.resolvedAt && [t("prod.corr.resolvedAt"), formatDateTime(c.resolvedAt)],
+        c.resolutionNote && [t("prod.review.note"), c.resolutionNote],
+        [t("prod.common.id"), c.id],
+      ],
+      actions: [
+        open && { action: "resolve-correction", label: t("prod.corr.resolve"), className: "secondary-button" },
+        open && { action: "cancel-correction", label: t("prod.corr.cancel"), className: "danger-button" },
       ],
     };
   }
@@ -749,12 +963,113 @@ $("#new-shipment-button").addEventListener("click", () => openShipmentForm());
 
 $("#detail-actions").addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]")?.dataset.action;
-  const shipment = openDetailRef?.kind === "shipment"
+  if (!action || !openDetailRef) return;
+  if (openDetailRef.kind === "correction") {
+    if (action === "resolve-correction") closeCorrection(openDetailRef.id, "resolved");
+    if (action === "cancel-correction") closeCorrection(openDetailRef.id, "cancelled");
+    return;
+  }
+  const shipment = openDetailRef.kind === "shipment"
     ? state.shipments.find((item) => item.id === openDetailRef.id)
     : null;
-  if (!action || !shipment) return;
+  if (!shipment) return;
   if (action === "edit-shipment") openShipmentForm(shipment);
   if (action === "delete-shipment") confirmShipmentDelete(shipment);
+});
+
+/* ---------- plot corrections ---------- */
+
+async function closeCorrection(requestId, status, plotId = null) {
+  const path = `/api/v1/plot-corrections/${requestId}${plotId ? `/plots/${plotId}` : ""}`;
+  try {
+    await api(path, { method: "PATCH", body: { status } });
+    $$("dialog[open]").forEach((dialog) => dialog.close());
+    await refreshWorkspace();
+    showToast(status === "resolved" ? t("prod.corr.resolved") : t("prod.corr.cancelled"));
+  } catch (error) {
+    if (error.status === 401) return showLogin();
+    showToast(describeError(error, "prod.corr.closeFailed"));
+  }
+}
+
+const correctionForm = $("#correction-form");
+
+function correctionAffectedCount() {
+  const scope = $("#correction-scope").value;
+  if (scope === "all") return state.plots.length;
+  if (scope === "plot") return $("#correction-plot").value ? 1 : 0;
+  return plotsInGroup(state.plots, $("#correction-grouptype").value, $("#correction-group").value).length;
+}
+
+function updateCorrectionForm({ refillGroups = false } = {}) {
+  const scope = $("#correction-scope").value;
+  if (refillGroups) {
+    const groups = groupOptions(state.plots, $("#correction-grouptype").value);
+    $("#correction-group").innerHTML = groups.length
+      ? groups.map((group) =>
+        `<option value="${escapeHtml(group.key)}">${escapeHtml(`${group.label} (${group.count})`)}</option>`).join("")
+      : `<option value="">${escapeHtml(t("prod.corr.noGroups"))}</option>`;
+  }
+  $("#correction-plot-field").hidden = scope !== "plot";
+  $("#correction-grouptype-field").hidden = scope !== "group";
+  $("#correction-group-field").hidden = scope !== "group";
+  $("#correction-affects").textContent = t("prod.corr.affects", { n: formatNumber(correctionAffectedCount(), 0) });
+}
+
+function openCorrectionForm(scope = "all", plotId = null) {
+  if (!canWrite() || !state.plots.length) return;
+  correctionForm.reset();
+  const options = (values, labelOf) =>
+    values.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(labelOf(value))}</option>`).join("");
+  $("#correction-scope").innerHTML = options(CORRECTION_SCOPES, (value) => labelFor("prod.corr.scope", value));
+  $("#correction-grouptype").innerHTML = options(CORRECTION_GROUP_TYPES, (value) => labelFor("prod.corr.group", value));
+  $("#correction-category").innerHTML = options(CORRECTION_CATEGORIES, (value) => labelFor("prod.corr.category", value));
+  $("#correction-plot").innerHTML = state.plots.map((plot) =>
+    `<option value="${escapeHtml(plot.id)}">${escapeHtml(`${plot.farmName} · ${plot.producer}`)}</option>`).join("");
+  $("#correction-scope").value = scope;
+  if (plotId) $("#correction-plot").value = plotId;
+  if (scope === "group") {
+    const supplierGroups = groupOptions(state.plots, "supplier").length;
+    $("#correction-grouptype").value = supplierGroups ? "supplier" : "producer";
+  }
+  $("#correction-form-status").textContent = "";
+  updateCorrectionForm({ refillGroups: true });
+  $$("dialog[open]").forEach((dialog) => dialog.close());
+  $("#correction-dialog").showModal();
+}
+
+$("#correction-scope").addEventListener("change", () => updateCorrectionForm());
+$("#correction-plot").addEventListener("change", () => updateCorrectionForm());
+$("#correction-group").addEventListener("change", () => updateCorrectionForm());
+$("#correction-grouptype").addEventListener("change", () => updateCorrectionForm({ refillGroups: true }));
+$("#request-all-button").addEventListener("click", () => openCorrectionForm("all"));
+$("#request-group-button").addEventListener("click", () => openCorrectionForm("group"));
+
+correctionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(correctionForm);
+  const scope = String(data.get("scope"));
+  const body = { scope, category: data.get("category"), message: String(data.get("message")).trim() };
+  if (scope === "plot") body.plotId = data.get("plotId");
+  if (scope === "group") {
+    body.groupType = data.get("groupType");
+    body.groupKey = data.get("groupKey");
+  }
+  const status = $("#correction-form-status");
+  const submit = correctionForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  status.textContent = t("prod.corr.sending");
+  try {
+    const created = await api("/api/v1/plot-corrections", { method: "POST", body });
+    $("#correction-dialog").close();
+    await refreshWorkspace();
+    showToast(t("prod.corr.created", { n: created.plotCount }));
+  } catch (error) {
+    if (error.status === 401) return showLogin();
+    status.textContent = describeError(error, "prod.corr.createFailed");
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 /* ---------- supplier invitation ---------- */
@@ -893,6 +1208,23 @@ document.addEventListener("click", (event) => {
     else logout();
     return;
   }
+  const correctionClose = event.target.closest("[data-correction-close]");
+  if (correctionClose) {
+    const { requestId, plotId, status } = correctionClose.dataset;
+    closeCorrection(requestId, status, plotId);
+    return;
+  }
+  const correctionPlot = event.target.closest("[data-correction-plot]");
+  if (correctionPlot) {
+    openCorrectionForm("plot", correctionPlot.dataset.correctionPlot);
+    return;
+  }
+  const plotTab = event.target.closest("[data-plot-tab]");
+  if (plotTab) {
+    if (plotTab.closest("#plot-tabs")) selectPlotTab(plotTab.dataset.plotTab);
+    else openPlotTab(plotTab.dataset.plotTab);
+    return;
+  }
   const row = event.target.closest("[data-detail]");
   if (row) {
     openDetail(row.dataset.detail, row.dataset.id);
@@ -914,7 +1246,25 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const tabs = event.target.closest?.("#plot-tabs");
+  if (tabs && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const ids = $$("[data-plot-tab]", tabs).map((tab) => tab.dataset.plotTab);
+    const current = Math.max(0, ids.indexOf(state.plotTab));
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? ids.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length;
+    selectPlotTab(ids[next]);
+    $("#plot-tabs .plot-tab.active")?.focus();
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " ") return;
+  const plotRow = event.target.closest?.("tr[data-plot-tab], g[data-plot-tab]");
+  if (plotRow) {
+    event.preventDefault();
+    openPlotTab(plotRow.dataset.plotTab);
+    return;
+  }
   const row = event.target.closest?.("tr[data-detail], li[data-detail]");
   if (!row) return;
   event.preventDefault();

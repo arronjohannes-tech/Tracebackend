@@ -218,21 +218,64 @@
             </p>
           </div>
         </div>
-        <div class="panel table-panel">
-          <table>
-            <thead>
-              <tr>
-                <th data-i18n="prod.plot.farm">Betrieb</th>
-                <th data-i18n="prod.plot.producer">Produzent</th>
-                <th data-i18n="prod.plot.supplier">Lieferant</th>
-                <th data-i18n="prod.plot.area">Fläche (ha)</th>
-                <th data-i18n="prod.plot.geofence">Geofence</th>
-                <th data-i18n="prod.plot.captured">Erfasst</th>
-              </tr>
-            </thead>
-            <tbody id="plots-body"></tbody>
-          </table>
+        <div class="plot-tabs" id="plot-tabs" role="tablist" data-i18n-aria-label="prod.pv.tabs"
+          aria-label="Parzellen"></div>
+        <div class="plot-pane" id="plots-all" role="tabpanel">
+          <div class="map-layout">
+            <article class="map-card">
+              <div class="map-placeholder" id="plots-map" role="group" data-i18n-aria-label="prod.pv.mapAll"
+                aria-label="Karte aller Parzellen"></div>
+            </article>
+            <article class="panel">
+              <p class="eyebrow" data-i18n="prod.pv.summaryEyebrow">KORREKTURANFORDERUNGEN</p>
+              <h3 id="plots-summary-title">—</h3>
+              <div class="validation-list" id="plots-summary"></div>
+              <div class="stacked-actions">
+                <button class="secondary-button" type="button" id="request-group-button" hidden>
+                  <span data-i18n="prod.corr.requestGroup">Für Gruppe anfordern</span>
+                </button>
+                <button class="secondary-button" type="button" id="request-all-button" hidden>
+                  <span data-i18n="prod.corr.requestAll">Für alle Parzellen anfordern</span>
+                </button>
+              </div>
+            </article>
+          </div>
+          <div class="panel table-panel">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="prod.plot.farm">Betrieb</th>
+                  <th data-i18n="prod.plot.producer">Produzent</th>
+                  <th data-i18n="prod.plot.supplier">Lieferant</th>
+                  <th data-i18n="prod.plot.area">Fläche (ha)</th>
+                  <th data-i18n="prod.plot.geofence">Geofence</th>
+                  <th data-i18n="prod.plot.captured">Erfasst</th>
+                  <th data-i18n="prod.plot.corrections">Korrekturen</th>
+                </tr>
+              </thead>
+              <tbody id="plots-body"></tbody>
+            </table>
+          </div>
+          <article class="panel table-panel">
+            <div class="panel-header table-heading">
+              <h3 data-i18n="prod.corr.title">Korrekturanforderungen</h3>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="prod.common.status">Status</th>
+                  <th data-i18n="prod.corr.scope">Umfang</th>
+                  <th data-i18n="prod.corr.category">Kategorie</th>
+                  <th data-i18n="prod.corr.message">Nachricht</th>
+                  <th data-i18n="prod.corr.plots">Parzellen</th>
+                  <th data-i18n="prod.common.created">Erstellt</th>
+                </tr>
+              </thead>
+              <tbody id="corrections-body"></tbody>
+            </table>
+          </article>
         </div>
+        <div class="plot-pane" id="plot-pane" role="tabpanel" hidden></div>
       </section>
 
       <section class="view" id="shipments" data-title-key="title.shipments">
@@ -474,6 +517,40 @@
         <button type="button" class="secondary-button" data-dialog-close
           data-i18n="prod.common.cancel">Abbrechen</button>
         <button type="submit" class="primary-button" data-i18n="prod.common.save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="profile-dialog wide" id="correction-dialog" aria-labelledby="correction-dialog-title">
+    <div class="profile-dialog-header">
+      <div>
+        <p class="eyebrow" data-i18n="prod.corr.dialogEyebrow">PARZELLEN</p>
+        <h2 id="correction-dialog-title" data-i18n="prod.corr.dialogTitle">Korrektur anfordern</h2>
+      </div>
+      <button class="dialog-close" type="button" data-dialog-close data-i18n-aria-label="prod.common.dialogClose"
+        aria-label="Dialog schließen">×</button>
+    </div>
+    <form id="correction-form" class="dialog-form">
+      <div class="form-grid">
+        <label class="form-wide"><span data-i18n="prod.corr.scopeLabel">Umfang</span>
+          <select name="scope" id="correction-scope"></select></label>
+        <label id="correction-plot-field"><span data-i18n="prod.corr.plotLabel">Parzelle</span>
+          <select name="plotId" id="correction-plot"></select></label>
+        <label id="correction-grouptype-field"><span data-i18n="prod.corr.groupTypeLabel">Gruppierung</span>
+          <select name="groupType" id="correction-grouptype"></select></label>
+        <label id="correction-group-field"><span data-i18n="prod.corr.groupLabel">Gruppe</span>
+          <select name="groupKey" id="correction-group"></select></label>
+        <label class="form-wide"><span data-i18n="prod.corr.categoryLabel">Grund der Korrektur</span>
+          <select name="category" id="correction-category"></select></label>
+        <label class="form-wide"><span data-i18n="prod.corr.messageLabel">Hinweis an den Lieferanten</span>
+          <textarea name="message" rows="4" maxlength="2000" required></textarea></label>
+      </div>
+      <p class="muted" id="correction-affects"></p>
+      <p class="form-status" id="correction-form-status" role="status" aria-live="polite"></p>
+      <div class="invite-actions">
+        <button type="button" class="secondary-button" data-dialog-close
+          data-i18n="prod.common.cancel">Abbrechen</button>
+        <button type="submit" class="primary-button" data-i18n="prod.corr.send">Anfordern</button>
       </div>
     </form>
   </dialog>

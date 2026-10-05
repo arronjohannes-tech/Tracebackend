@@ -54,7 +54,7 @@ framework preset. The production environment requires:
 - `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
 - `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for supplier invitations
 
-Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql` and `007_copernicus_process.sql` with `npm run migrate` before deploying
+Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql`, `007_copernicus_process.sql` and `008_plot_corrections.sql` with `npm run migrate` before deploying
 the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
 until both mail settings are present. Invitations expire after seven days; only
 token hashes are stored, and a link can be used once. The registration page is
@@ -92,6 +92,10 @@ using those workflows in production.
 | GET | `/api/v1/organization` | Organization details with counts, API-feature flags and, for administrators, members |
 | GET/POST | `/api/v1/shipments` | List or create shipments; create needs `system_admin`, `org_admin` or `reviewer` |
 | GET/PATCH/DELETE | `/api/v1/shipments/:id` | Show, partially update (reviewer and up) or delete (administrators only) a shipment |
+| GET | `/api/v1/plots` | Plots with GeoJSON polygon, centroid and computed validation (geofence, plausible area, self-intersection, duplicate, EO analysis) plus the number of open corrections |
+| GET/POST | `/api/v1/plot-corrections` | List (`?status=&plotId=`) or create correction requests; create needs `system_admin`, `org_admin` or `reviewer`. Body: `{scope:"plot",plotId}`, `{scope:"group",groupType:"supplier"\|"producer",groupKey}` or `{scope:"all"}`, plus `category` and `message` |
+| GET/PATCH | `/api/v1/plot-corrections/:id` | Show a request or close it as a whole (`{status:"resolved"\|"cancelled",note?}`) |
+| PATCH | `/api/v1/plot-corrections/:id/plots/:plotId` | Close the correction of a single plot; the request closes automatically once no plot is open |
 | GET | `/api/v1/geofences` | Active geofences for the authenticated organization |
 | POST | `/api/v1/sync/push` | Mobile `{deviceId,operations[]}`; returns accepted/conflicts |
 | GET | `/api/v1/sync/pull?cursor=0&limit=500` | Ordered tenant changes and next cursor |
