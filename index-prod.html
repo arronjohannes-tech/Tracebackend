@@ -217,20 +217,23 @@
             <p data-i18n="plot.description">Versionierte Produktionsflächen mit deterministischen Qualitätsprüfungen.
             </p>
           </div>
+          <button class="primary-button" type="button" id="show-polygons-button" disabled
+            data-i18n="prod.pv.showPolygons">Polygon anzeigen</button>
         </div>
         <div class="plot-tabs" id="plot-tabs" role="tablist" data-i18n-aria-label="prod.pv.tabs"
-          aria-label="Parzellen"></div>
+          aria-label="Parzellen" hidden></div>
         <div class="plot-pane" id="plots-all" role="tabpanel">
-          <div class="map-layout">
+          <div class="map-layout" id="plots-map-view" hidden>
             <article class="map-card">
-              <div class="map-placeholder" id="plots-map" role="group" data-i18n-aria-label="prod.pv.mapAll"
-                aria-label="Karte aller Parzellen"></div>
+              <div class="map-placeholder" id="plots-map" role="group" data-i18n-aria-label="prod.pv.mapSelected"
+                aria-label="Karte der markierten Parzellen"></div>
             </article>
             <article class="panel">
               <p class="eyebrow" data-i18n="prod.pv.summaryEyebrow">KORREKTURANFORDERUNGEN</p>
               <h3 id="plots-summary-title">—</h3>
               <div class="validation-list" id="plots-summary"></div>
               <div class="stacked-actions">
+                <div class="stacked-actions" id="request-selected-buttons"></div>
                 <button class="secondary-button" type="button" id="request-group-button" hidden>
                   <span data-i18n="prod.corr.requestGroup">Für Gruppe anfordern</span>
                 </button>
@@ -240,40 +243,45 @@
               </div>
             </article>
           </div>
-          <div class="panel table-panel">
-            <table>
-              <thead>
-                <tr>
-                  <th data-i18n="prod.plot.farm">Betrieb</th>
-                  <th data-i18n="prod.plot.producer">Produzent</th>
-                  <th data-i18n="prod.plot.supplier">Lieferant</th>
-                  <th data-i18n="prod.plot.area">Fläche (ha)</th>
-                  <th data-i18n="prod.plot.geofence">Geofence</th>
-                  <th data-i18n="prod.plot.captured">Erfasst</th>
-                  <th data-i18n="prod.plot.corrections">Korrekturen</th>
-                </tr>
-              </thead>
-              <tbody id="plots-body"></tbody>
-            </table>
-          </div>
-          <article class="panel table-panel">
-            <div class="panel-header table-heading">
-              <h3 data-i18n="prod.corr.title">Korrekturanforderungen</h3>
+          <div class="plot-pane" id="plots-list">
+            <p class="form-status" id="plots-load-status" role="status" hidden
+              data-i18n="prod.pv.loadFailed">Geometrien und Korrekturanforderungen konnten nicht geladen werden.</p>
+            <div class="panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="prod.pv.selection">Auswahl</th>
+                    <th data-i18n="prod.plot.farm">Betrieb</th>
+                    <th data-i18n="prod.plot.producer">Produzent</th>
+                    <th data-i18n="prod.plot.supplier">Lieferant</th>
+                    <th data-i18n="prod.plot.area">Fläche (ha)</th>
+                    <th data-i18n="prod.plot.geofence">Geofence</th>
+                    <th data-i18n="prod.plot.captured">Erfasst</th>
+                    <th data-i18n="prod.plot.corrections">Korrekturen</th>
+                  </tr>
+                </thead>
+                <tbody id="plots-body"></tbody>
+              </table>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th data-i18n="prod.common.status">Status</th>
-                  <th data-i18n="prod.corr.scope">Umfang</th>
-                  <th data-i18n="prod.corr.category">Kategorie</th>
-                  <th data-i18n="prod.corr.message">Nachricht</th>
-                  <th data-i18n="prod.corr.plots">Parzellen</th>
-                  <th data-i18n="prod.common.created">Erstellt</th>
-                </tr>
-              </thead>
-              <tbody id="corrections-body"></tbody>
-            </table>
-          </article>
+            <article class="panel table-panel">
+              <div class="panel-header table-heading">
+                <h3 data-i18n="prod.corr.title">Korrekturanforderungen</h3>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="prod.common.status">Status</th>
+                    <th data-i18n="prod.corr.scope">Umfang</th>
+                    <th data-i18n="prod.corr.category">Kategorie</th>
+                    <th data-i18n="prod.corr.message">Nachricht</th>
+                    <th data-i18n="prod.corr.plots">Parzellen</th>
+                    <th data-i18n="prod.common.created">Erstellt</th>
+                  </tr>
+                </thead>
+                <tbody id="corrections-body"></tbody>
+              </table>
+            </article>
+          </div>
         </div>
         <div class="plot-pane" id="plot-pane" role="tabpanel" hidden></div>
       </section>

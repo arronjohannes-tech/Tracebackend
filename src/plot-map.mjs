@@ -7,6 +7,11 @@ const METRES_PER_DEGREE = 111_320;
 
 export const MAP_VIEW = { width: VIEW_WIDTH, height: VIEW_HEIGHT };
 
+export function plotsForPolygonView(plots, selectedIds) {
+  const selected = plots.filter((plot) => selectedIds.has(plot.id));
+  return selected.length ? selected : plots.slice(0, 1);
+}
+
 export function outerRing(plot) {
   const ring = plot?.polygon?.coordinates?.[0];
   return Array.isArray(ring) && ring.length >= 4 ? ring : null;

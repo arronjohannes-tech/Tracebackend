@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildMapSvg, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, ringPath,
+  buildMapSvg, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, plotsForPolygonView, ringPath,
 } from "../src/plot-map.mjs";
 
 const ok = { state: "ok" };
@@ -18,6 +18,20 @@ const plot = (id, extra = {}) => ({
   validation: validation(), ...extra,
 });
 const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
+
+test("polygon view defaults to the first plot and otherwise shows only selected plots in list order", () => {
+  const plots = [plot("a"), plot("b"), plot("c")];
+  assert.deepEqual(plotsForPolygonView(plots, new Set()).map((item) => item.id), ["a"]);
+  assert.deepEqual(plotsForPolygonView(plots, new Set(["b"])).map((item) => item.id), ["b"]);
+  const selected = plotsForPolygonView(plots, new Set(["c", "a", "removed"]));
+  assert.deepEqual(selected.map((item) => item.id), ["a", "c"]);
+  const svg = buildMapSvg(selected, { interactive: true }, escape);
+  assert.ok(svg.includes('data-plot-tab="a"'));
+  assert.ok(svg.includes('data-plot-tab="c"'));
+  assert.ok(!svg.includes('data-plot-tab="b"'));
+  assert.deepEqual(plotsForPolygonView(plots, new Set(["removed"])).map((item) => item.id), ["a"]);
+  assert.deepEqual(plotsForPolygonView([], new Set(["a"])), []);
+});
 
 test("plot tone reflects findings before pending checks", () => {
   assert.equal(plotTone(plot("a")), "ok");

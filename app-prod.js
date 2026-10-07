@@ -7,7 +7,7 @@ import {
 import { format } from "./src/i18n-prod.mjs?v=1";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
-  buildMapSvg, groupOptions, plotTone, plotsInGroup,
+  buildMapSvg, groupOptions, plotTone, plotsInGroup, plotsForPolygonView,
 } from "./src/plot-map.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
@@ -47,6 +47,7 @@ const state = {
   plotsFailed: false,
   corrections: [],
   plotTab: "all",
+  selectedPlotIds: new Set(),
   editingShipmentId: null,
   deletingShipmentId: null,
 };
@@ -203,6 +204,7 @@ function showLogin() {
   state.plotsFailed = false;
   state.corrections = [];
   state.plotTab = "all";
+  state.selectedPlotIds.clear();
   state.user = null;
   state.organizationId = null;
   $$("dialog[open]").forEach((dialog) => dialog.close());
@@ -398,7 +400,8 @@ function renderPlotTabs() {
         ${tone ? `<i class="tone-dot ${tone}"></i>` : ""}<span>${escapeHtml(label)}</span>
         ${flag ? `<em class="tab-flag" aria-hidden="true">!</em>` : ""}</button>`;
   };
-  $("#plot-tabs").innerHTML = tab("all", `${t("prod.pv.all")} (${formatNumber(state.plots.length, 0)})`)
+  $("#plot-tabs").innerHTML = tab("all", t("prod.pv.backToList"))
+    + (state.plotTab === "selection" ? tab("selection", t("prod.pv.selectedPolygons")) : "")
     + state.plots.map((plot) => tab(plot.id, plot.farmName, {
       tone: plotTone(plot),
       flag: plot.openCorrectionCount > 0,
@@ -409,7 +412,14 @@ function renderPlotTabs() {
 function renderPlots() {
   if (!state.dashboard) return;
   const plot = state.plots.find((item) => item.id === state.plotTab);
-  if (!plot) state.plotTab = "all";
+  if (!plot && (state.plotTab !== "selection" || !state.plots.length)) state.plotTab = "all";
+  const polygonView = state.plotTab !== "all";
+  $("#show-polygons-button").hidden = polygonView;
+  $("#show-polygons-button").disabled = !state.plots.length || state.plotsFailed;
+  $("#plots-load-status").hidden = !state.plotsFailed;
+  $("#plot-tabs").hidden = !polygonView;
+  $("#plots-list").hidden = polygonView;
+  $("#plots-map-view").hidden = state.plotTab !== "selection";
   $("#plots-all").hidden = Boolean(plot);
   $("#plot-pane").hidden = !plot;
   renderPlotTabs();
@@ -418,8 +428,9 @@ function renderPlots() {
 }
 
 function renderPlotsOverview() {
-  const { plots, corrections } = state;
-  const tableRows = plots.length || !state.plotsFailed ? plots : state.dashboard.plots;
+  const { corrections } = state;
+  const tableRows = state.plots.length || !state.plotsFailed ? state.plots : state.dashboard.plots;
+  const plots = plotsForPolygonView(state.plots, state.selectedPlotIds);
   const message = !plots.length
     ? `<div class="live-empty map-empty">${escapeHtml(t(state.plotsFailed ? "prod.pv.loadFailed" : "prod.plot.empty"))}</div>`
     : "";
@@ -431,7 +442,8 @@ function renderPlotsOverview() {
 
   const checkRow = (tone, text) =>
     `<div><span class="check ${tone}">${CHECK_GLYPH[tone]}</span><span>${escapeHtml(text)}</span></div>`;
-  const openRequests = corrections.filter((item) => item.status === "open").length;
+  const openRequests = corrections.filter((item) => item.status === "open"
+    && item.plots.some((entry) => plots.some((plot) => plot.id === entry.plotId))).length;
   $("#plots-summary-title").textContent = t("prod.pv.summaryOpen", { n: formatNumber(openRequests, 0) });
   $("#plots-summary").innerHTML = [
     checkRow("ok", t("prod.pv.summaryClean", { n: plots.filter((item) => plotTone(item) === "ok").length })),
@@ -441,10 +453,17 @@ function renderPlotsOverview() {
   $("#request-all-button").hidden = !canWrite() || !plots.length;
   $("#request-group-button").hidden = !canWrite()
     || !CORRECTION_GROUP_TYPES.some((type) => groupOptions(plots, type).length);
+  $("#request-selected-buttons").innerHTML = canWrite() ? plots.map((plot) =>
+    `<button class="secondary-button" type="button" data-correction-plot="${escapeHtml(plot.id)}">
+      ${escapeHtml(t("plot.requestCorrection"))} · ${escapeHtml(plot.farmName)}</button>`).join("") : "";
 
   $("#plots-body").innerHTML = tableRows.length
     ? tableRows.map((plot) => `
-        <tr data-plot-tab="${escapeHtml(plot.id)}" tabindex="0">
+        <tr>
+          <td><input type="checkbox" data-plot-select="${escapeHtml(plot.id)}"
+            aria-label="${escapeHtml(t("prod.pv.selectPlot", { name: plot.farmName }))}"
+            ${state.selectedPlotIds.has(plot.id) ? "checked" : ""}
+            ${state.plotsFailed ? "disabled" : ""}></td>
           <td><strong>${escapeHtml(plot.farmName)}</strong><small>${escapeHtml(shortId(plot.id))}</small></td>
           <td>${escapeHtml(plot.producer)}</td>
           <td>${escapeHtml(plot.supplierName ?? "—")}</td>
@@ -453,7 +472,7 @@ function renderPlotsOverview() {
           <td>${escapeHtml(formatDate(plot.capturedAt))}</td>
           <td>${plot.openCorrectionCount > 0 ? statusBadge("open") : "—"}</td>
         </tr>`).join("")
-    : emptyRow(7, "prod.plot.empty");
+    : emptyRow(8, "prod.plot.empty");
 
   $("#corrections-body").innerHTML = corrections.length
     ? corrections.map((correction) => `
@@ -1044,6 +1063,16 @@ $("#correction-group").addEventListener("change", () => updateCorrectionForm());
 $("#correction-grouptype").addEventListener("change", () => updateCorrectionForm({ refillGroups: true }));
 $("#request-all-button").addEventListener("click", () => openCorrectionForm("all"));
 $("#request-group-button").addEventListener("click", () => openCorrectionForm("group"));
+$("#show-polygons-button").addEventListener("click", () => {
+  const plots = plotsForPolygonView(state.plots, state.selectedPlotIds);
+  if (plots.length) selectPlotTab(plots.length === 1 ? plots[0].id : "selection");
+});
+$("#plots-body").addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-plot-select]");
+  if (!checkbox) return;
+  if (checkbox.checked) state.selectedPlotIds.add(checkbox.dataset.plotSelect);
+  else state.selectedPlotIds.delete(checkbox.dataset.plotSelect);
+});
 
 correctionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
