@@ -36,7 +36,29 @@
     "plugins": [
       "expo-font",
       "expo-sharing",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "SCTracker uses the camera to scan land documents for on-device text recognition.",
+          "photosPermission": "SCTracker accesses selected images to recognize document text on this device."
+        }
+      ],
+      [
+        "expo-mlkit-ocr",
+        {
+          "iosEngine": "auto"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4",
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

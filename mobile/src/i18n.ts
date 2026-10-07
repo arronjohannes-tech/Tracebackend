@@ -100,6 +100,15 @@ export type Translation = {
     locationDistance: string;
     locationPending: string;
     locationAccuracy: string;
+    startWalk: string;
+    stopWalk: string;
+    undoPoint: string;
+    trackCount: string;
+    selectDocument: string;
+    noDocument: string;
+    linkedDocument: string;
+    mapUnavailable: string;
+    tooFewTrackPoints: string;
   };
   operations: {
     title: string;
@@ -124,6 +133,13 @@ export type Translation = {
     downloaded: string;
     noItems: string;
     providerBlocked: string;
+    scanPhoto: string;
+    chooseImage: string;
+    ocrText: string;
+    ocrReview: string;
+    ocrUnavailable: string;
+    ocrFailed: string;
+    ocrEmpty: string;
   };
   help: { title: string; body: string };
   alerts: { required: string; saved: string; storageError: string };
@@ -166,7 +182,7 @@ export const translations = {
       loadRemote: "Aus Datenbank laden",
     },
     plots: {
-      title: "GeoJSON-Plots", description: "Drei GPS-Punkte erfassen oder ein GeoJSON-Polygon importieren und bearbeiten.",
+      title: "GeoJSON-Plots", description: "Eine Grundstücksgrenze per GPS-Begehung erfassen oder ein GeoJSON-Polygon importieren.",
       producer: "Produzent", farm: "Plot- oder Farmname", area: "Fläche (ha)", supplierId: "Lieferanten-ID (optional)",
       capturePoint: "GPS-Punkt hinzufügen", pointCount: "Punkte", polygonJson: "GeoJSON Polygon",
       importGeoJson: "GeoJSON importieren", applyGeoJson: "GeoJSON übernehmen", saveDraft: "Offline-Plot speichern",
@@ -175,13 +191,22 @@ export const translations = {
       geofence: "Geofence", geofencePending: "Ausstehend", geofenceInside: "Innerhalb",
       geofenceOutside: "Außerhalb", geofenceReview: "Prüfung erforderlich",
       geofenceApproved: "Freigegeben", geofenceBlocked: "Lokal blockiert; das Backend entscheidet endgültig.",
-      maxPoints: "Es können nur drei GPS-Punkte erfasst werden.", reset: "Reset", cancel: "Abbrechen",
+      maxPoints: "Die GPS-Aufzeichnung ist auf 10.000 Punkte begrenzt.", reset: "Reset", cancel: "Abbrechen",
       duplicatePoint: "Dieser GPS-Punkt liegt zu nah an einem bereits erfassten Punkt. Bitte einige Meter weitergehen und erneut erfassen.",
       checkLocation: "Standort prüfen", locationInside: "Standort innerhalb des Geofence",
       locationOutside: "Standort außerhalb aller Geofences. Eine hier erfasste Parzelle wird zur Prüfung vorgelegt.",
       locationDistance: "bis zum nächsten Geofence",
       locationPending: "Für diese Organisation sind keine Geofences geladen; der Standort kann nicht geprüft werden.",
       locationAccuracy: "Genauigkeit",
+      startWalk: "Grenzbegehung starten",
+      stopWalk: "Begehung beenden und Polygon bilden",
+      undoPoint: "Letzten GPS-Punkt entfernen",
+      trackCount: "Aufgezeichnete GPS-Punkte",
+      selectDocument: "Grundstücksdokument als Beleg verknüpfen",
+      noDocument: "Kein Dokument verknüpft",
+      linkedDocument: "Verknüpft",
+      mapUnavailable: "Die Kartenansicht ist auf dieser Plattform nicht verfügbar.",
+      tooFewTrackPoints: "Für eine Grenze sind mindestens drei unterschiedliche GPS-Punkte erforderlich.",
     },
     operations: {
       title: "Compliance-Vorgänge", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
@@ -192,6 +217,13 @@ export const translations = {
       showLocal: "Anzeigen", removeItem: "Entfernen", queuedDownload: "Wird heruntergeladen, sobald online.",
       downloading: "Download läuft ...", downloaded: "Lokal gespeichert",
       noItems: "Noch keine Vorgänge.", providerBlocked: "Provider-Konfiguration fehlt. Dieser Vorgang ist blockiert.",
+      scanPhoto: "Dokument fotografieren und hochladen",
+      chooseImage: "Bild auswählen und hochladen",
+      ocrText: "Lokal erkannter Text (bearbeitbar, bitte manuell prüfen)",
+      ocrReview: "OCR-Text manuell geprüft",
+      ocrUnavailable: "Lokale Texterkennung ist auf diesem Gerät nicht verfügbar.",
+      ocrFailed: "Lokale Texterkennung fehlgeschlagen",
+      ocrEmpty: "Kein Text erkannt. Bildqualität und Ausrichtung prüfen.",
     },
     help: {
       title: "Offline und Datenschutz",
@@ -234,7 +266,7 @@ export const translations = {
       loadRemote: "Load from database",
     },
     plots: {
-      title: "GeoJSON plots", description: "Capture three GPS points or import and edit a GeoJSON Polygon.",
+      title: "GeoJSON plots", description: "Record a parcel boundary while walking with GPS, or import a GeoJSON Polygon.",
       producer: "Producer", farm: "Plot or farm name", area: "Area (ha)", supplierId: "Supplier ID (optional)",
       capturePoint: "Add GPS point", pointCount: "Points", polygonJson: "GeoJSON Polygon",
       importGeoJson: "Import GeoJSON", applyGeoJson: "Apply GeoJSON", saveDraft: "Save offline plot",
@@ -243,13 +275,22 @@ export const translations = {
       geofence: "Geofence", geofencePending: "Pending", geofenceInside: "Inside",
       geofenceOutside: "Outside", geofenceReview: "Review required",
       geofenceApproved: "Approved", geofenceBlocked: "Locally blocked; the backend remains authoritative.",
-      maxPoints: "Only three GPS points can be captured.", reset: "Reset", cancel: "Cancel",
+      maxPoints: "GPS recording is limited to 10,000 points.", reset: "Reset", cancel: "Cancel",
       duplicatePoint: "This GPS point is too close to a point already captured. Move a few metres and capture again.",
       checkLocation: "Check location", locationInside: "Location is inside the geofence",
       locationOutside: "Location is outside all geofences. A plot captured here will be submitted for review.",
       locationDistance: "to the nearest geofence",
       locationPending: "No geofences are loaded for this organization; the location cannot be checked.",
       locationAccuracy: "Accuracy",
+      startWalk: "Start boundary walk",
+      stopWalk: "Finish walk and create polygon",
+      undoPoint: "Remove last GPS point",
+      trackCount: "Recorded GPS points",
+      selectDocument: "Link a parcel document as evidence",
+      noDocument: "No document linked",
+      linkedDocument: "Linked",
+      mapUnavailable: "Map preview is not available on this platform.",
+      tooFewTrackPoints: "At least three distinct GPS points are required for a boundary.",
     },
     operations: {
       title: "Compliance operations", documents: "Documents", pickUpload: "Pick and upload document",
@@ -260,6 +301,13 @@ export const translations = {
       showLocal: "Show", removeItem: "Remove", queuedDownload: "Will download automatically when online.",
       downloading: "Downloading ...", downloaded: "Saved locally",
       providerBlocked: "Provider configuration is missing. This operation is blocked.",
+      scanPhoto: "Photograph and upload document",
+      chooseImage: "Choose and upload image",
+      ocrText: "Locally recognized text (editable; review manually)",
+      ocrReview: "OCR text manually reviewed",
+      ocrUnavailable: "On-device text recognition is not available on this device.",
+      ocrFailed: "On-device text recognition failed",
+      ocrEmpty: "No text recognized. Check image quality and orientation.",
     },
     help: {
       title: "Offline and privacy",
@@ -301,7 +349,7 @@ export const translations = {
       loadRemote: "ከመረጃ ቋት ጫን",
     },
     plots: {
-      title: "GeoJSON መሬቶች", description: "ሶስት GPS ነጥቦችን መዝግብ ወይም GeoJSON Polygon አስገባና አርትዕ።",
+      title: "GeoJSON መሬቶች", description: "የመሬት ድንበርን በGPS ጉዞ ይመዝግቡ ወይም GeoJSON Polygon ያስገቡ።",
       producer: "አምራች", farm: "የመሬት ወይም የእርሻ ስም", area: "ስፋት (ሄክታር)",
       supplierId: "የአቅራቢ መለያ (አማራጭ)", capturePoint: "GPS ነጥብ ጨምር", pointCount: "ነጥቦች",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON አስገባ", applyGeoJson: "GeoJSON ተግብር",
@@ -311,13 +359,22 @@ export const translations = {
       geofence: "Geofence", geofencePending: "በመጠባበቅ ላይ", geofenceInside: "ውስጥ",
       geofenceOutside: "ውጭ", geofenceReview: "ምርመራ ያስፈልጋል",
       geofenceApproved: "ጸድቋል", geofenceBlocked: "በአካባቢው ታግዷል፤ የጀርባ ስርዓቱ የመጨረሻ ውሳኔ ይሰጣል።",
-      maxPoints: "ሶስት GPS ነጥቦች ብቻ መመዝገብ ይቻላል።", reset: "ዳግም አስጀምር", cancel: "ሰርዝ",
+      maxPoints: "የGPS ቀረጻ እስከ 10,000 ነጥቦች ድረስ ብቻ ነው።", reset: "ዳግም አስጀምር", cancel: "ሰርዝ",
       duplicatePoint: "ይህ GPS ነጥብ ቀደም ብሎ ከተመዘገበ ነጥብ ጋር በጣም ቅርብ ነው። ጥቂት ሜትሮች ተንቀሳቅሰው እንደገና ይመዝግቡ።",
       checkLocation: "ቦታ ይፈትሹ", locationInside: "የአሁኑ ቦታ በጂኦፌንስ ውስጥ ነው",
       locationOutside: "የአሁኑ ቦታ ከሁሉም ጂኦፌንሶች ውጭ ነው። እዚህ የተመዘገበ መሬት ለግምገማ ይቀርባል።",
       locationDistance: "እስከ ቅርቡ ጂኦፌንስ",
       locationPending: "ለዚህ ድርጅት ጂኦፌንስ አልተጫነም፤ ቦታው መፈተሽ አይቻልም።",
       locationAccuracy: "ትክክለኛነት",
+      startWalk: "የድንበር ጉዞ ጀምር",
+      stopWalk: "ጉዞውን አጠናቅቅና ፖሊጎን ፍጠር",
+      undoPoint: "የመጨረሻውን GPS ነጥብ አስወግድ",
+      trackCount: "የተመዘገቡ GPS ነጥቦች",
+      selectDocument: "የመሬት ሰነድን እንደ ማስረጃ አያይዝ",
+      noDocument: "ምንም ሰነድ አልተያያዘም",
+      linkedDocument: "ተያይዟል",
+      mapUnavailable: "በዚህ መድረክ የካርታ ቅድመ እይታ አይገኝም።",
+      tooFewTrackPoints: "ለድንበር ቢያንስ ሶስት የተለያዩ GPS ነጥቦች ያስፈልጋሉ።",
     },
     operations: {
       title: "የተገዢነት ሂደቶች", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
@@ -328,6 +385,13 @@ export const translations = {
       showLocal: "አሳይ", removeItem: "አስወግድ", queuedDownload: "ኦንላይን ሲሆን በራስ-ሰር ይወርዳል።",
       downloading: "በማውረድ ላይ ...", downloaded: "በአካባቢ ተቀምጧል",
       noItems: "ገና ሂደት የለም።", providerBlocked: "የአቅራቢ ውቅር የለም። ይህ ሂደት ታግዷል።",
+      scanPhoto: "ሰነድ ፎቶ አንስተው ይጫኑ",
+      chooseImage: "ምስል ይምረጡና ይጫኑ",
+      ocrText: "በአካባቢው የታወቀ ጽሑፍ (ሊታረም ይችላል፤ በእጅ ይመርምሩ)",
+      ocrReview: "የOCR ጽሑፍ በእጅ ተመርምሯል",
+      ocrUnavailable: "በዚህ መሣሪያ ላይ የአካባቢ ጽሑፍ ማወቂያ አይገኝም።",
+      ocrFailed: "የአካባቢ ጽሑፍ ማወቂያ አልተሳካም",
+      ocrEmpty: "ጽሑፍ አልተገኘም። የምስሉን ጥራትና አቅጣጫ ይፈትሹ።",
     },
     help: {
       title: "ከመስመር ውጭ እና ግላዊነት",
@@ -369,7 +433,7 @@ export const translations = {
       loadRemote: "ካብ መዝገብ ሓበሬታ ጽዓን",
     },
     plots: {
-      title: "GeoJSON ግራውቲ", description: "ሰለስተ GPS ነጥቢ መዝግቡ ወይ GeoJSON Polygon ኣእትዉን ኣርሙን።",
+      title: "GeoJSON ግራውቲ", description: "ዶብ መሬት ብGPS ጉዕዞ መዝግቡ ወይ GeoJSON Polygon ኣእትዉ።",
       producer: "ኣፍራዪ", farm: "ስም ግራት ወይ ሕርሻ", area: "ስፍሓት (ሄክታር)",
       supplierId: "መለለዪ ኣቕራቢ (ኣማራጺ)", capturePoint: "ነጥቢ GPS ወስኽ", pointCount: "ነጥብታት",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON ኣእቱ", applyGeoJson: "GeoJSON ተግብር",
@@ -379,13 +443,22 @@ export const translations = {
       geofence: "Geofence", geofencePending: "ይጽበ ኣሎ", geofenceInside: "ውሽጢ",
       geofenceOutside: "ወጻኢ", geofenceReview: "ግምገማ የድሊ",
       geofenceApproved: "ጸዲቑ", geofenceBlocked: "ኣብ መሳርሒ ተዓጽዩ፤ ናይ መወዳእታ ውሳነ ናይ ሰርቨር እዩ።",
-      maxPoints: "ሰለስተ GPS ነጥቢ ጥራይ ክምዝገብ ይኽእል።", reset: "ዳግማይ ጀምር", cancel: "ሰርዝ",
+      maxPoints: "ናይ GPS ቀረጻ ክሳብ 10,000 ነጥብታት ጥራይ እዩ።", reset: "ዳግማይ ጀምር", cancel: "ሰርዝ",
       duplicatePoint: "እዚ GPS ነጥቢ ምስ ዝተመዝገበ ነጥቢ ኣዝዩ ቀረባ እዩ። ውሑዳት ሜትሮ ተንቀሳቐሱ ደጊምኩም መዝግቡ።",
       checkLocation: "ቦታ ፈትሽ", locationInside: "ናይ ሕጂ ቦታ ኣብ ውሽጢ ጂኦፌንስ እዩ",
       locationOutside: "ናይ ሕጂ ቦታ ካብ ኩሎም ጂኦፌንሳት ወጻኢ እዩ። ኣብዚ ዝተመዝገበ መሬት ንግምገማ ይቀርብ።",
       locationDistance: "ክሳብ ዝቐረበ ጂኦፌንስ",
       locationPending: "ንዚ ውድብ ጂኦፌንስ ኣይተጻዕነን፤ ቦታ ክፍተሽ ኣይከኣልን።",
       locationAccuracy: "ትኽክልነት",
+      startWalk: "ናይ ዶብ ጉዕዞ ጀምር",
+      stopWalk: "ጉዕዞ ዛዝምን ፖሊጎን ፍጠርን",
+      undoPoint: "ናይ መወዳእታ GPS ነጥቢ ኣወግድ",
+      trackCount: "ዝተመዝገቡ GPS ነጥብታት",
+      selectDocument: "ሰነድ መሬት ከም መርትዖ ኣተሓሕዝ",
+      noDocument: "ዝተኣሳሰረ ሰነድ የለን",
+      linkedDocument: "ተኣሳሲሩ",
+      mapUnavailable: "ኣብዚ መድረኽ ቅድመ ርኢቶ ካርታ የለን።",
+      tooFewTrackPoints: "ንዶብ እንተወሓደ ሰለስተ ዝተፈላለዩ GPS ነጥብታት የድልዩ።",
     },
     operations: {
       title: "መስርሓት ምኽባር ሕጊ", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",
@@ -396,6 +469,13 @@ export const translations = {
       showLocal: "ኣርኢ", removeItem: "ኣወግድ", queuedDownload: "ኣብ መስመር ምስ ኮነ ብኣውቶ ክወርድ እዩ።",
       downloading: "ይወርድ ኣሎ ...", downloaded: "ኣብ መሳርሒ ተዓቂቡ",
       noItems: "ገና መስርሕ የለን።", providerBlocked: "ውቅር ኣቕራቢ የለን። እዚ መስርሕ ተዓጽዩ።",
+      scanPhoto: "ሰነድ ፎቶ ኣንስእን ስቐልን",
+      chooseImage: "ምስሊ ምረጽን ስቐልን",
+      ocrText: "ብኣካባቢ ዝተፈለጠ ጽሑፍ (ክእረም ይኽእል፤ ብኢድ መርምር)",
+      ocrReview: "ጽሑፍ OCR ብኢድ ተመርሚሩ",
+      ocrUnavailable: "ኣብዚ መሳርሒ ናይ ኣካባቢ ምፍላጥ ጽሑፍ የለን።",
+      ocrFailed: "ናይ ኣካባቢ ምፍላጥ ጽሑፍ ኣይተዓወተን",
+      ocrEmpty: "ጽሑፍ ኣይተረኽበን። ጽሬትን ኣንፈትን ምስሊ ፈትሽ።",
     },
     help: {
       title: "ካብ መስመር ወጻኢን ብሕታውነትን",

@@ -46,15 +46,23 @@ export type Plot = {
   revision?: number;
   id: string;
   supplierId?: string;
+  documentId?: string;
   producer: string;
   farmName: string;
   areaHa: string;
   polygon: GeoJsonPolygon;
+  trackPoints?: GpsTrackPoint[];
   geofenceStatus: GeofenceStatus;
   localGeofenceResult: "pending" | "inside" | "outside";
   capturedAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;
+};
+
+export type GpsTrackPoint = {
+  position: Position;
+  accuracyM: number | null;
+  capturedAt: string;
 };
 
 export type Supplier = {
@@ -75,6 +83,8 @@ export type DocumentRecord = {
   size: number;
   status: "uploading" | "uploaded" | "failed";
   createdAt: string;
+  localOcrText?: string;
+  localOcrReviewed?: boolean;
 };
 
 export type OperationStatus = "queued" | "processing" | "completed" | "failed" | "not_configured";

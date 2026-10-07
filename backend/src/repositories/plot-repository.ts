@@ -9,6 +9,8 @@ type PlotRow = {
     producer: string;
     farm_name: string;
     area_ha: string;
+    document_id: string | null;
+    track_points: unknown;
     geofence_status: string;
     local_geofence_result: string;
     revision: number;
@@ -39,6 +41,8 @@ export function plotDetailJson(row: PlotRow) {
         localGeofenceResult: row.local_geofence_result,
         revision: Number(row.revision),
         polygon: row.polygon,
+        documentId: row.document_id,
+        trackPoints: row.track_points ?? [],
         centroid: row.lat === null || row.lng === null ? null : { lat: Number(row.lat), lng: Number(row.lng) },
         capturedAt: row.captured_at.toISOString(),
         updatedAt: row.source_updated_at.toISOString(),
@@ -61,7 +65,7 @@ export async function listPlots(client: PoolClient, organizationId: string) {
     const rows = await queryMany<PlotRow>(client, `
     SELECT p.id, p.supplier_id, s.name AS supplier_name, p.producer, p.farm_name, p.area_ha,
            p.geofence_status, p.local_geofence_result, p.revision, p.captured_at, p.source_updated_at,
-           ST_AsGeoJSON(p.polygon)::jsonb AS polygon,
+           ST_AsGeoJSON(p.polygon)::jsonb AS polygon, p.document_id, p.track_points,
            ST_Y(ST_Centroid(p.polygon)) AS lat, ST_X(ST_Centroid(p.polygon)) AS lng,
            ST_Area(p.polygon::geography) / 10000 AS computed_area_ha,
            ST_IsValid(p.polygon) AS valid, ST_IsSimple(p.polygon) AS simple,

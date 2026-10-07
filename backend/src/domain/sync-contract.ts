@@ -10,10 +10,19 @@ const supplierPayload = z.object({
 const plotPayload = z.object({
   id: z.string().uuid(),
   supplierId: z.string().uuid().optional(),
+  documentId: z.string().uuid().optional(),
   producer: z.string().trim().min(1).max(200),
   farmName: z.string().trim().min(1).max(200),
   areaHa: z.string().refine((value) => Number.isFinite(Number(value)) && Number(value) > 0),
   polygon: z.unknown(),
+  trackPoints: z.array(z.object({
+    position: z.tuple([
+      z.number().min(-180).max(180),
+      z.number().min(-90).max(90),
+    ]),
+    accuracyM: z.number().nonnegative().nullable(),
+    capturedAt: z.string().datetime(),
+  })).max(10000).optional(),
   capturedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 }).passthrough();
@@ -60,4 +69,3 @@ export function classifyGeofenceResult(check: {
   }
   return { geofenceStatus: "review_required", localGeofenceResult: "outside" };
 }
-

@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Location from "expo-location";
+import { isSupported as isOcrSupported, recognizeText } from "expo-mlkit-ocr";
 import * as Sharing from "expo-sharing";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -38,6 +40,7 @@ import {
   evaluatePlotGeofence,
   parsePolygon,
   type GeoJsonPolygon,
+  type GpsTrackPoint,
   type OperationalRequest,
   type PersistedState,
   type Plot,
@@ -53,6 +56,7 @@ import {
   type Translation,
 } from "../i18n";
 import type { AppController } from "../controllers/useAppController";
+import PlotMapPreview from "./PlotMapPreview";
 
 const palette = {
   ink: "#14251D",
@@ -493,7 +497,7 @@ function SuppliersScreen({
   );
 }
 
-const MAX_GPS_POINTS = 3;
+const MAX_GPS_TRACK_POINTS = 10000;
 
 function PlotsScreen({
   state,
@@ -512,17 +516,60 @@ function PlotsScreen({
   const [farm, setFarm] = useState("");
   const [area, setArea] = useState("");
   const [supplierId, setSupplierId] = useState(selectedSupplierId ?? "");
-  const [points, setPoints] = useState<Position[]>([]);
+  const [documentId, setDocumentId] = useState("");
+  const [trackPoints, setTrackPoints] = useState<GpsTrackPoint[]>([]);
+  const trackPointsRef = useRef<GpsTrackPoint[]>([]);
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
+  const [tracking, setTracking] = useState(false);
   const [geoJsonText, setGeoJsonText] = useState("");
   const [polygon, setPolygon] = useState<GeoJsonPolygon | null>(null);
   const [locating, setLocating] = useState(false);
   const [fix, setFix] = useState<{ check: PositionGeofenceCheck; accuracyM: number | null } | null>(null);
+  const uploadedDocuments = state.documents.filter((document) => document.status === "uploaded");
+
+  useEffect(() => () => {
+    watchRef.current?.remove();
+    watchRef.current = null;
+  }, []);
+
+  function replaceTrackPoints(next: GpsTrackPoint[]) {
+    trackPointsRef.current = next;
+    setTrackPoints(next);
+  }
+
+  function appendTrackPoint(location: Location.LocationObject) {
+    const position: Position = [location.coords.longitude, location.coords.latitude];
+    if (!Number.isFinite(position[0]) || !Number.isFinite(position[1])) return;
+    const previous = trackPointsRef.current;
+    if (previous.length >= MAX_GPS_TRACK_POINTS) {
+      watchRef.current?.remove();
+      watchRef.current = null;
+      setTracking(false);
+      Alert.alert(t.plots.trackCount, t.plots.maxPoints);
+      return;
+    }
+    const last = previous[previous.length - 1];
+    if (last) {
+      const latitudeDelta = (position[1] - last.position[1]) * 111320;
+      const longitudeDelta = (position[0] - last.position[0]) *
+        111320 * Math.cos((position[1] * Math.PI) / 180);
+      if (Math.hypot(latitudeDelta, longitudeDelta) < 2) return;
+    }
+    const accuracy = location.coords.accuracy;
+    const next = [...previous, {
+      position,
+      accuracyM: typeof accuracy === "number" && Number.isFinite(accuracy) ? accuracy : null,
+      capturedAt: new Date(location.timestamp).toISOString(),
+    }];
+    replaceTrackPoints(next);
+    showFix({ position, accuracyM: next[next.length - 1].accuracyM });
+  }
 
   function applyPolygonText(value = geoJsonText) {
     try {
       const next = parsePolygon(value);
       setPolygon(next);
-      setPoints(next.coordinates[0].slice(0, -1));
+      replaceTrackPoints([]);
       setGeoJsonText(JSON.stringify(next, null, 2));
     } catch {
       Alert.alert(t.plots.invalidPolygon);
@@ -530,7 +577,10 @@ function PlotsScreen({
   }
 
   function resetCapture() {
-    setPoints([]);
+    watchRef.current?.remove();
+    watchRef.current = null;
+    setTracking(false);
+    replaceTrackPoints([]);
     setPolygon(null);
     setGeoJsonText("");
     setFix(null);
@@ -576,36 +626,63 @@ function PlotsScreen({
   }
 
   async function capturePoint() {
-    if (points.length >= MAX_GPS_POINTS) {
-      Alert.alert(t.plots.capturePoint, t.plots.maxPoints, [
-        { text: t.plots.cancel, style: "cancel" },
-        { text: t.plots.reset, style: "destructive", onPress: resetCapture },
-      ]);
-      return;
-    }
+    setLocating(true);
     const fixResult = await readPosition();
     if (!fixResult) return;
-    const position = fixResult.position;
     showFix(fixResult);
+    appendTrackPoint({
+      coords: {
+        latitude: fixResult.position[1],
+        longitude: fixResult.position[0],
+        accuracy: fixResult.accuracyM,
+        altitude: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+      },
+      timestamp: Date.now(),
+    });
+  }
 
-    // iOS often returns the same cached fix; identical or collinear points cannot form a polygon.
-    if (points.some(([x, y]) => x === position[0] && y === position[1])) {
-      Alert.alert(t.plots.duplicatePoint);
-      return;
-    }
-    const next: Position[] = [...points, position];
-    if (next.length === MAX_GPS_POINTS) {
-      let nextPolygon: GeoJsonPolygon;
-      try {
-        nextPolygon = closePolygon(next);
-      } catch {
-        Alert.alert(t.plots.duplicatePoint);
+  async function startWalk() {
+    if (tracking) return;
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert(t.plots.permissionError);
         return;
       }
+      setPolygon(null);
+      setGeoJsonText("");
+      setTracking(true);
+      watchRef.current = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Highest, timeInterval: 3000, distanceInterval: 2 },
+        appendTrackPoint,
+        (error) => Alert.alert(t.plots.gpsError, error),
+      );
+    } catch (error) {
+      setTracking(false);
+      Alert.alert(t.plots.gpsError, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  function finishWalk() {
+    watchRef.current?.remove();
+    watchRef.current = null;
+    setTracking(false);
+    try {
+      const nextPolygon = closePolygon(trackPointsRef.current.map((point) => point.position));
       setPolygon(nextPolygon);
       setGeoJsonText(JSON.stringify(nextPolygon, null, 2));
+    } catch {
+      Alert.alert(t.plots.tooFewTrackPoints);
     }
-    setPoints(next);
+  }
+
+  function undoTrackPoint() {
+    replaceTrackPoints(trackPointsRef.current.slice(0, -1));
+    setPolygon(null);
+    setGeoJsonText("");
   }
 
   async function importGeoJson() {
@@ -641,10 +718,12 @@ function PlotsScreen({
     const plot: Plot = {
       id: createUuid(),
       supplierId: supplierId.trim() || undefined,
+      documentId: documentId || undefined,
       producer: producer.trim(),
       farmName: farm.trim(),
       areaHa: parsedArea.toFixed(2),
       polygon,
+      trackPoints,
       localGeofenceResult,
       geofenceStatus: localGeofenceResult === "outside"
         ? "review_required"
@@ -674,7 +753,8 @@ function PlotsScreen({
     setFarm("");
     setArea("");
     setSupplierId(selectedSupplierId ?? "");
-    setPoints([]);
+    setDocumentId("");
+    replaceTrackPoints([]);
     setPolygon(null);
     setGeoJsonText("");
     setFix(null);
@@ -689,7 +769,7 @@ function PlotsScreen({
         <Field label={t.plots.farm} value={farm} onChangeText={setFarm} />
         <Field label={t.plots.area} value={area} onChangeText={setArea} keyboardType="decimal-pad" />
         <Field label={t.plots.supplierId} value={supplierId} onChangeText={setSupplierId} />
-        <Text style={styles.caption}>{t.plots.pointCount}: {points.length} / {MAX_GPS_POINTS}</Text>
+        <Text style={styles.caption}>{t.plots.trackCount}: {trackPoints.length} / {MAX_GPS_TRACK_POINTS}</Text>
         <Button
           label={locating ? "GPS ..." : t.plots.capturePoint}
           icon="locate"
@@ -698,6 +778,15 @@ function PlotsScreen({
           disabled={locating}
         />
         <Button
+          label={tracking ? t.plots.stopWalk : t.plots.startWalk}
+          icon={tracking ? "stop-circle" : "walk"}
+          onPress={() => tracking ? finishWalk() : void startWalk()}
+          disabled={locating}
+        />
+        {trackPoints.length ? (
+          <Button label={t.plots.undoPoint} icon="arrow-undo" onPress={undoTrackPoint} secondary />
+        ) : null}
+        <Button
           label={t.plots.checkLocation}
           icon="shield-checkmark"
           onPress={() => void checkLocation()}
@@ -705,6 +794,35 @@ function PlotsScreen({
           disabled={locating}
         />
         {fix ? <LocationFix fix={fix} t={t} /> : null}
+        {uploadedDocuments.length ? (
+          <View>
+            <Text style={styles.fieldLabel}>{t.plots.selectDocument}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setDocumentId("")}
+              style={[styles.documentChoice, !documentId && styles.documentChoiceSelected]}
+            >
+              <Text>{t.plots.noDocument}</Text>
+            </Pressable>
+            {uploadedDocuments.map((document) => (
+              <Pressable
+                key={document.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: document.id === documentId }}
+                onPress={() => setDocumentId(document.id)}
+                style={[styles.documentChoice, document.id === documentId && styles.documentChoiceSelected]}
+              >
+                <Text>{document.fileName}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <PlotMapPreview
+          positions={polygon?.coordinates[0].slice(0, -1) ?? []}
+          trackPoints={trackPoints}
+          polygon={polygon}
+          unavailableLabel={t.plots.mapUnavailable}
+        />
         <Button label={t.plots.importGeoJson} icon="document-attach" onPress={() => void importGeoJson()} secondary />
         <Field
           label={t.plots.polygonJson}
@@ -735,6 +853,17 @@ function PlotsScreen({
           {plot.geofenceStatus === "outside" || plot.geofenceStatus === "review_required" ? (
             <Text style={styles.errorText}>{t.plots.geofenceBlocked}</Text>
           ) : null}
+          {plot.documentId ? (
+            <Text style={styles.caption}>
+              {t.plots.linkedDocument}: {state.documents.find((document) => document.id === plot.documentId)?.fileName ?? plot.documentId}
+            </Text>
+          ) : null}
+          <PlotMapPreview
+            positions={plot.polygon.coordinates[0].slice(0, -1)}
+            trackPoints={plot.trackPoints ?? []}
+            polygon={plot.polygon}
+            unavailableLabel={t.plots.mapUnavailable}
+          />
           <Text style={styles.mono}>{JSON.stringify(plot.polygon)}</Text>
         </View>
       ))}
@@ -847,19 +976,23 @@ function OperationsScreen({
       localDownloadError: undefined,
     }));
     try {
-      const destination = new File(Paths.document, `evidence-${operation.id}.json`);
+      if (!FileSystem.documentDirectory) {
+        throw new Error("Document storage is unavailable.");
+      }
+      const destinationUri = `${FileSystem.documentDirectory}evidence-${operation.id}.json`;
       const headers = await getCurrentAuthHeaders();
-      const file = await File.downloadFileAsync(operation.downloadUrl, destination, {
+      await FileSystem.deleteAsync(destinationUri, { idempotent: true });
+      const file = await FileSystem.downloadAsync(operation.downloadUrl, destinationUri, {
         headers,
-        idempotent: true,
       });
+      const localUri = file.uri;
       updateOperation(operation.id, (current) => ({
         ...current,
-        localDownloadUri: file.uri,
+        localDownloadUri: localUri,
         localDownloadStatus: "downloaded",
         localDownloadError: undefined,
       }));
-      if (openAfterDownload) await openLocalDocument(file.uri);
+      if (openAfterDownload) await openLocalDocument(localUri);
     } catch (error) {
       updateOperation(operation.id, (current) => ({
         ...current,
@@ -894,24 +1027,59 @@ function OperationsScreen({
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled) return;
     const asset = result.assets[0];
+    await uploadAsset(asset.uri, asset.name, asset.mimeType ?? "application/octet-stream", asset.size ?? 0);
+  }
+
+  async function pickImageForOcr(camera: boolean) {
+    if (!configured) {
+      Alert.alert(t.sync.notConfigured, t.operations.providerBlocked);
+      return;
+    }
+    if (camera) {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t.operations.scanPhoto, t.plots.permissionError);
+        return;
+      }
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t.operations.chooseImage, t.plots.permissionError);
+        return;
+      }
+    }
+    const result = camera
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 1 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
+    const asset = result.assets?.[0];
+    if (result.canceled || !asset) return;
+    await uploadAsset(
+      asset.uri,
+      asset.fileName ?? `parcel-document-${Date.now()}.jpg`,
+      asset.mimeType ?? "image/jpeg",
+      asset.fileSize ?? 0,
+    );
+  }
+
+  async function uploadAsset(uri: string, name: string, mimeType: string, size: number) {
     const localId = createUuid();
     update((current) => ({
       ...current,
       documents: [{
         id: localId,
-        fileName: asset.name,
-        mimeType: asset.mimeType ?? "application/octet-stream",
-        size: asset.size ?? 0,
+        fileName: name,
+        mimeType,
+        size,
         status: "uploading",
         createdAt: new Date().toISOString(),
       }, ...current.documents],
     }));
     try {
       const uploaded = await uploadDocument({
-        uri: asset.uri,
-        name: asset.name,
-        mimeType: asset.mimeType ?? "application/octet-stream",
-        size: asset.size ?? 0,
+        uri,
+        name,
+        mimeType,
+        size,
         idempotencyKey: localId,
       });
       update((current) => ({
@@ -922,6 +1090,29 @@ function OperationsScreen({
             : document,
         ),
       }));
+      if (mimeType.startsWith("image/")) {
+        try {
+          if (Platform.OS === "web" || !isOcrSupported()) {
+            Alert.alert(t.operations.ocrUnavailable);
+          } else {
+            const result = await recognizeText(uri);
+            update((current) => ({
+              ...current,
+              documents: current.documents.map((document) =>
+                document.id === uploaded.id
+                  ? { ...document, localOcrText: result.text, localOcrReviewed: false }
+                  : document,
+              ),
+            }));
+            if (!result.text.trim()) Alert.alert(t.operations.ocrEmpty);
+          }
+        } catch (error) {
+          Alert.alert(
+            t.operations.ocrFailed,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
     } catch (error) {
       update((current) => ({
         ...current,
@@ -1032,11 +1223,60 @@ function OperationsScreen({
         onToggle={() => setCollapsed((current) => ({ ...current, uploads: !current.uploads }))}
       >
         <Button label={t.operations.pickUpload} icon="cloud-upload" onPress={() => void pickAndUpload()} disabled={!configured} />
+        <View style={styles.buttonRow}>
+          <Button
+            label={t.operations.scanPhoto}
+            icon="camera"
+            onPress={() => void pickImageForOcr(true)}
+            secondary
+            disabled={!configured}
+          />
+          <Button
+            label={t.operations.chooseImage}
+            icon="image"
+            onPress={() => void pickImageForOcr(false)}
+            secondary
+            disabled={!configured}
+          />
+        </View>
         {state.documents.map((document) => (
           <View key={document.id} style={styles.listRow}>
-            <View style={styles.flex}>
+            <View style={[styles.flex, styles.documentRow]}>
               <Text style={styles.itemTitle}>{document.fileName}</Text>
               <Text style={styles.caption}>{document.mimeType} · {document.size} B</Text>
+              {typeof document.localOcrText === "string" ? (
+                <>
+                  <Field
+                    label={t.operations.ocrText}
+                    value={document.localOcrText}
+                    onChangeText={(localOcrText) => update((current) => ({
+                      ...current,
+                      documents: current.documents.map((item) =>
+                        item.id === document.id
+                          ? { ...item, localOcrText, localOcrReviewed: false }
+                          : item,
+                      ),
+                    }))}
+                    multiline
+                  />
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: document.localOcrReviewed === true }}
+                    onPress={() => update((current) => ({
+                      ...current,
+                      documents: current.documents.map((item) =>
+                        item.id === document.id
+                          ? { ...item, localOcrReviewed: !item.localOcrReviewed }
+                          : item,
+                      ),
+                    }))}
+                  >
+                    <Text style={styles.caption}>
+                      {document.localOcrReviewed ? "☑" : "☐"} {t.operations.ocrReview}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
             {document.status === "failed" ? null : <Badge status={document.status} t={t} />}
           </View>
@@ -1559,6 +1799,10 @@ const styles = StyleSheet.create({
   cardTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
   itemTitle: { color: palette.ink, fontSize: 12, fontWeight: "700" },
   caption: { color: palette.muted, fontSize: 9, lineHeight: 14 },
+  documentRow: { gap: 8 },
+  fieldLabel: { marginTop: 5, marginBottom: 5, color: palette.ink, fontSize: 10, fontWeight: "700" },
+  documentChoice: { padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 8, backgroundColor: "#FFFFFF" },
+  documentChoiceSelected: { borderColor: palette.forest, backgroundColor: palette.softGreen },
   fixBox: { gap: 4, padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 9, backgroundColor: "#FFFFFF" },
   fixGood: { borderColor: palette.forest, backgroundColor: palette.softGreen },
   fixBad: { borderColor: palette.red, backgroundColor: palette.softRed },

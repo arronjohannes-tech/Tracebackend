@@ -25,10 +25,12 @@ export function plotJson(row: Record<string, unknown>) {
     id: row.id,
     revision: Number(row.revision),
     ...(row.supplier_id ? { supplierId: row.supplier_id } : {}),
+    ...(row.document_id ? { documentId: row.document_id } : {}),
     producer: row.producer,
     farmName: row.farm_name,
     areaHa: String(row.area_ha),
     polygon: row.polygon,
+    trackPoints: row.track_points ?? [],
     geofenceStatus: row.geofence_status,
     localGeofenceResult: row.local_geofence_result,
     capturedAt: row.captured_at instanceof Date ? row.captured_at.toISOString() : row.captured_at,
@@ -143,19 +145,27 @@ export async function applyPlot(
     return { conflict: plotJson(existing) };
   }
   if (!existing && operation.baseVersion !== 0) throw conflict("ENTITY_VERSION_MISSING", "The referenced base version does not exist.");
+  if (operation.payload.documentId) {
+    const document = await queryOne<{ id: string }>(client,
+      "SELECT id FROM documents WHERE organization_id = $1 AND id = $2 AND status = 'completed'",
+      [organizationId, operation.payload.documentId]);
+    if (!document) throw conflict("DOCUMENT_NOT_AVAILABLE", "The linked document must be completed and belong to this organization.");
+  }
   const row = await queryOne<Record<string, unknown>>(client,
     `INSERT INTO plots(
-       id, organization_id, supplier_id, producer, farm_name, area_ha,
-       polygon, geofence_status, local_geofence_result, captured_at, source_updated_at
+       id, organization_id, supplier_id, document_id, producer, farm_name, area_ha,
+       polygon, track_points, geofence_status, local_geofence_result, captured_at, source_updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6,
-       ST_SetSRID(ST_GeomFromGeoJSON($7), 4326), $8, $9, $10, $11
+       $1, $2, $3, $4, $5, $6, $7,
+       ST_SetSRID(ST_GeomFromGeoJSON($8), 4326), $9::jsonb, $10, $11, $12, $13
      )
      ON CONFLICT (organization_id, id) DO UPDATE SET
        revision = plots.revision + 1,
-       supplier_id = EXCLUDED.supplier_id, producer = EXCLUDED.producer,
+       supplier_id = EXCLUDED.supplier_id, document_id = EXCLUDED.document_id,
+       producer = EXCLUDED.producer,
        farm_name = EXCLUDED.farm_name, area_ha = EXCLUDED.area_ha,
-       polygon = EXCLUDED.polygon, geofence_status = EXCLUDED.geofence_status,
+       polygon = EXCLUDED.polygon, track_points = EXCLUDED.track_points,
+       geofence_status = EXCLUDED.geofence_status,
        local_geofence_result = EXCLUDED.local_geofence_result,
        captured_at = EXCLUDED.captured_at,
        source_updated_at = EXCLUDED.source_updated_at
@@ -164,10 +174,12 @@ export async function applyPlot(
       operation.entityId,
       organizationId,
       operation.payload.supplierId ?? null,
+      operation.payload.documentId ?? null,
       operation.payload.producer,
       operation.payload.farmName,
       operation.payload.areaHa,
       JSON.stringify(polygon),
+      JSON.stringify(operation.payload.trackPoints ?? []),
       geofence.geofenceStatus,
       geofence.localGeofenceResult,
       operation.payload.capturedAt,
