@@ -271,6 +271,20 @@ const rows = [
   ["prod.pv.legend.ok", "In Ordnung", "No findings", "ጉድለት የለም"],
   ["prod.pv.legend.fail", "Beanstandet", "Findings", "ጉድለት አለ"],
   ["prod.pv.legend.pending", "Ausstehend", "Pending", "በመጠባበቅ ላይ"],
+  ["prod.sat.start", "Satellitenanalyse starten ({n})", "Start satellite analysis ({n})", "የሳተላይት ትንተና ጀምር ({n})"],
+  ["prod.sat.running", "Satellitenanalyse läuft …", "Satellite analysis in progress …", "የሳተላይት ትንተና በሂደት ላይ ነው …"],
+  ["prod.sat.notice", "Abruf für die angezeigten Parzellen, einzeln nacheinander. Satellitenbilder sind kein Nachweis der Entwaldungsfreiheit oder EUDR-Konformität.", "Requests imagery for the displayed plots, one at a time. Satellite images do not prove deforestation-free status or EUDR compliance.", "ለሚታዩት የመሬት ክፍሎች ምስሎችን አንድ በአንድ ይጠይቃል። የሳተላይት ምስሎች ከደን ጭፍጨፋ ነፃ መሆንን ወይም የEUDR ተገዢነትን አያረጋግጡም።"],
+  ["prod.sat.notConfigured", "Satellitenanalyse ist für diese Organisation nicht aktiviert.", "Satellite analysis is not enabled for this organization.", "ለዚህ ድርጅት የሳተላይት ትንተና አልነቃም።"],
+  ["prod.sat.readOnly", "Start nur für Organisationsadministratoren, Prüfer und Feldmitarbeiter.", "Only organization administrators, reviewers and field agents can start an analysis.", "ትንተና መጀመር የሚችሉት የድርጅት አስተዳዳሪዎች፣ ገምጋሚዎች እና የመስክ ሠራተኞች ብቻ ናቸው።"],
+  ["prod.sat.mock", "Nur Testlauf: Copernicus ist nicht vollständig eingerichtet. Keine Satellitenbilder abgerufen.", "Mock only: Copernicus is not fully configured. No satellite imagery was requested.", "የሙከራ ሂደት ብቻ፦ Copernicus ሙሉ በሙሉ አልተዋቀረም። የሳተላይት ምስሎች አልተጠየቁም።"],
+  ["prod.sat.failed", "Satellitenanalyse oder Ergebnisabruf fehlgeschlagen.", "Satellite analysis or result retrieval failed.", "የሳተላይት ትንተና ወይም ውጤት ማምጣት አልተሳካም።"],
+  ["prod.sat.completed", "Satellitenbild verfügbar. Fachliche Bewertung erforderlich.", "Satellite image available. Expert assessment required.", "የሳተላይት ምስል አለ። የባለሙያ ግምገማ ያስፈልጋል።"],
+  ["prod.sat.noResult", "Kein Satellitenbild für diese Parzelle vorhanden.", "No satellite image is available for this plot.", "ለዚህ የመሬት ክፍል የሳተላይት ምስል የለም።"],
+  ["prod.sat.available", "Gespeicherter Analysevorgang vorhanden. Ergebnis laden, um den Status zu prüfen.", "A saved analysis exists. Load the result to check its status.", "የተቀመጠ ትንተና አለ። ሁኔታውን ለማየት ውጤቱን ያምጡ።"],
+  ["prod.sat.load", "Ergebnis / Status laden", "Load result / status", "ውጤት / ሁኔታ አምጣ"],
+  ["prod.sat.image", "Satellitenbild anzeigen", "Show satellite image", "የሳተላይት ምስል አሳይ"],
+  ["prod.sat.download", "Satellitenbild herunterladen (TIFF)", "Download satellite image (TIFF)", "የሳተላይት ምስል አውርድ (TIFF)"],
+  ["prod.sat.imageAlt", "Satellitenbild der Parzelle {name}", "Satellite image of plot {name}", "የመሬት ክፍል {name} የሳተላይት ምስል"],
 ];
 
 export const prodTranslations = { de: {}, en: {}, am: {} };

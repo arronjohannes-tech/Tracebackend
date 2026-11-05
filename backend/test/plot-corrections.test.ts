@@ -41,7 +41,7 @@ const plotRow = {
   revision: 2, captured_at: new Date("2026-10-01T10:00:00.000Z"),
   source_updated_at: new Date("2026-10-02T10:00:00.000Z"), polygon, lat: 7.6005, lng: 36.8005,
   computed_area_ha: "1.2300", valid: true, simple: true, duplicate_count: 1,
-  eo_status: null, eo_phase: null, open_corrections: 1,
+  eo_status: null, eo_phase: null, eo_operation_id: "11111111-1111-4111-8111-111111111111", open_corrections: 1,
 };
 const requestRow = (overrides: Record<string, unknown> = {}) => ({
   id: requestId, scope: "group", group_type: "supplier", group_key: supplierId,
@@ -127,6 +127,7 @@ test("plots are listed with polygon, centroid and computed validation", async ()
   assert.equal(plot.validation.area.state, "ok");
   assert.equal(plot.validation.duplicate.state, "fail");
   assert.equal(plot.validation.eo.state, "pending");
+  assert.equal(plot.satelliteOperationId, plotRow.eo_operation_id);
 });
 
 test("a correction request for a single plot stores one item with the criticised revision", async () => {

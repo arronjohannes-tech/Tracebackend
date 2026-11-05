@@ -57,6 +57,7 @@ test("all translation keys used by the production script exist", async () => {
     ...["supplier", "producer"].map((type) => `prod.corr.group.${type}`),
     ...["geometry", "area", "geofence", "duplicate", "evidence", "other"].map((category) => `prod.corr.category.${category}`),
     ...["ok", "fail", "pending"].map((tone) => `prod.pv.legend.${tone}`),
+    ...["mock", "notConfigured", "failed", "running", "completed", "noResult"].map((outcome) => `prod.sat.${outcome}`),
   ];
 
   assert.ok(keys.length > 40);

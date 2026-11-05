@@ -25,6 +25,7 @@ type PlotRow = {
     duplicate_count: number;
     eo_status: string | null;
     eo_phase: string | null;
+    eo_operation_id: string | null;
     open_corrections: number;
 };
 
@@ -47,6 +48,7 @@ export function plotDetailJson(row: PlotRow) {
         capturedAt: row.captured_at.toISOString(),
         updatedAt: row.source_updated_at.toISOString(),
         openCorrectionCount: Number(row.open_corrections),
+        satelliteOperationId: row.eo_operation_id,
         validation: validatePlot({
             geofenceStatus: row.geofence_status,
             areaHa,
@@ -74,13 +76,13 @@ export async function listPlots(client: PoolClient, organizationId: string) {
                AND o.polygon && p.polygon AND ST_Intersects(o.polygon, p.polygon)
                AND ST_Area(ST_Intersection(o.polygon, p.polygon))
                    >= 0.9 * LEAST(ST_Area(o.polygon), ST_Area(p.polygon))) AS duplicate_count,
-           eo.status AS eo_status, eo.phase AS eo_phase,
+           eo.status AS eo_status, eo.phase AS eo_phase, eo.id AS eo_operation_id,
            (SELECT count(*)::int FROM plot_correction_items i
              WHERE i.organization_id = p.organization_id AND i.plot_id = p.id AND i.status = 'open') AS open_corrections
       FROM plots p
       LEFT JOIN suppliers s ON s.organization_id = p.organization_id AND s.id = p.supplier_id
       LEFT JOIN LATERAL (
-        SELECT r.status, r.phase FROM operational_requests r
+        SELECT r.id, r.status, r.phase FROM operational_requests r
          WHERE r.organization_id = p.organization_id AND r.kind = 'satellite'
            AND (r.subject_id = p.id::text
                 OR r.metadata->'results' @> jsonb_build_array(jsonb_build_object('plotId', p.id::text)))

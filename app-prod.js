@@ -9,6 +9,7 @@ import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
   buildMapSvg, groupOptions, plotTone, plotsInGroup, plotsForPolygonView,
 } from "./src/plot-map.mjs?v=1";
+import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
 const CORRECTION_SCOPES = ["plot", "group", "all"];
@@ -48,6 +49,12 @@ const state = {
   corrections: [],
   plotTab: "all",
   selectedPlotIds: new Set(),
+  satelliteBusy: false,
+  satelliteLoading: new Set(),
+  satelliteOperations: new Map(),
+  satelliteKeys: new Map(),
+  satelliteErrors: new Map(),
+  satelliteImages: new Map(),
   editingShipmentId: null,
   deletingShipmentId: null,
 };
@@ -133,7 +140,7 @@ function refreshSession() {
   return refreshing;
 }
 
-async function api(path, { method = "GET", body } = {}) {
+async function api(path, { method = "GET", body, headers = {}, responseType = "json" } = {}) {
   const url = new URL(path, location.origin);
   // System administrators are not bound to one organization and must name it explicitly.
   if (state.organizationId && state.user?.role === "system_admin") {
@@ -144,12 +151,14 @@ async function api(path, { method = "GET", body } = {}) {
     headers: {
       Accept: "application/json",
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...headers,
       Authorization: `Bearer ${accessToken()}`,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let response = await send();
   if (response.status === 401 && await refreshSession()) response = await send();
+  if (response.ok && responseType === "blob") return response.blob();
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new ApiError(
@@ -205,6 +214,13 @@ function showLogin() {
   state.corrections = [];
   state.plotTab = "all";
   state.selectedPlotIds.clear();
+  state.satelliteBusy = false;
+  state.satelliteLoading.clear();
+  state.satelliteOperations.clear();
+  state.satelliteKeys.clear();
+  state.satelliteErrors.clear();
+  for (const url of state.satelliteImages.values()) URL.revokeObjectURL(url);
+  state.satelliteImages.clear();
   state.user = null;
   state.organizationId = null;
   $$("dialog[open]").forEach((dialog) => dialog.close());
@@ -425,6 +441,153 @@ function renderPlots() {
   renderPlotTabs();
   if (plot) renderPlotPane(plot);
   else renderPlotsOverview();
+  renderSatellitePanel();
+}
+
+function visibleSatellitePlots() {
+  if (state.plotTab === "all") return [];
+  return state.plotTab === "selection"
+    ? plotsForPolygonView(state.plots, state.selectedPlotIds)
+    : state.plots.filter((plot) => plot.id === state.plotTab);
+}
+
+function renderSatellitePanel() {
+  const plots = visibleSatellitePlots();
+  const panel = $("#satellite-panel");
+  panel.hidden = !plots.length;
+  if (!plots.length) return;
+  const enabled = state.organization?.config?.satelliteEnabled === true;
+  const allowed = canRequestSatellite(state.user?.role);
+  const pending = plots.some((plot) =>
+    ["queued", "processing"].includes(state.satelliteOperations.get(plot.id)?.status));
+  panel.innerHTML = `
+    <h3>${escapeHtml(t("prod.kind.satellite"))}</h3>
+    <p class="muted">${escapeHtml(t("prod.sat.notice"))}</p>
+    ${!enabled ? `<p role="status">${escapeHtml(t("prod.sat.notConfigured"))}</p>` : ""}
+    ${!allowed ? `<p class="muted">${escapeHtml(t("prod.sat.readOnly"))}</p>` : ""}
+    ${allowed ? `<button class="primary-button" type="button" data-satellite-start
+      ${!enabled || state.satelliteBusy || pending || state.satelliteLoading.size ? "disabled" : ""}>
+      ${escapeHtml(t(state.satelliteBusy || pending ? "prod.sat.running" : "prod.sat.start", { n: plots.length }))}</button>` : ""}
+    <div class="satellite-results">${plots.map((plot) => {
+      const operation = state.satelliteOperations.get(plot.id);
+      const outcome = operation ? satelliteOutcome(operation, plot.id) : null;
+      const result = operation?.results?.find((item) => item.plotId === plot.id);
+      const imageKey = result ? `${operation.id}/${plot.id}` : null;
+      const image = state.satelliteImages.get(imageKey);
+      const error = state.satelliteErrors.get(plot.id);
+      return `<article class="satellite-result">
+        <h4>${escapeHtml(plot.farmName)}</h4>
+        <p role="status">${escapeHtml(outcome ? t(`prod.sat.${outcome}`)
+          : t(plot.satelliteOperationId ? "prod.sat.available" : "plot.eoPending"))}</p>
+        ${operation?.message ? `<p class="muted">${escapeHtml(operation.message)}</p>` : ""}
+        ${error ? `<p class="form-status" role="alert">${escapeHtml(error)}</p>` : ""}
+        ${plot.satelliteOperationId && !state.satelliteBusy ? `<button class="secondary-button" type="button"
+          data-satellite-load="${escapeHtml(plot.id)}" ${state.satelliteLoading.has(plot.id) ? "disabled" : ""}>
+          ${escapeHtml(t("prod.sat.load"))}</button>` : ""}
+        ${result ? `<p>${escapeHtml(formatDate(result.from))} – ${escapeHtml(formatDate(result.to))}</p>
+          <button class="secondary-button" type="button" data-satellite-image="${escapeHtml(plot.id)}"
+            ${state.satelliteBusy || state.satelliteLoading.has(plot.id) ? "disabled" : ""}>
+            ${escapeHtml(t(result.contentType === "image/tiff" ? "prod.sat.download" : "prod.sat.image"))}</button>` : ""}
+        ${image && result?.contentType !== "image/tiff" ? `<img src="${escapeHtml(image)}"
+          alt="${escapeHtml(t("prod.sat.imageAlt", { name: plot.farmName }))}">` : ""}
+      </article>`;
+    }).join("")}</div>`;
+}
+
+async function startSatelliteAnalysis() {
+  if (state.satelliteBusy || state.satelliteLoading.size) return;
+  const plots = visibleSatellitePlots();
+  if (!plots.length || !canRequestSatellite(state.user?.role)
+    || !state.organization?.config?.satelliteEnabled) return;
+  if (plots.some((plot) => ["queued", "processing"].includes(state.satelliteOperations.get(plot.id)?.status))) return;
+  const user = state.user;
+  state.satelliteBusy = true;
+  renderSatellitePanel();
+  try {
+    // One operation per plot avoids silently skipping selections above the provider's per-run limit.
+    for (const plot of plots) {
+      if (state.user !== user) break;
+      const key = state.satelliteKeys.get(plot.id) ?? crypto.randomUUID();
+      state.satelliteKeys.set(plot.id, key);
+      state.satelliteErrors.delete(plot.id);
+      try {
+        const operation = await api("/api/v1/satellite/analyses", {
+          method: "POST",
+          headers: { "Idempotency-Key": key },
+          body: { subjectId: plot.id, plotIds: [plot.id] },
+        });
+        if (state.user !== user) break;
+        state.satelliteOperations.set(plot.id, operation);
+        plot.satelliteOperationId = operation.id;
+        if (!["queued", "processing"].includes(operation.status)) state.satelliteKeys.delete(plot.id);
+      } catch (error) {
+        if (state.user !== user) break;
+        if (error.status === 401) { showLogin(); return; }
+        state.satelliteErrors.set(plot.id, describeError(error, "prod.sat.failed"));
+      }
+      renderSatellitePanel();
+    }
+    if (state.user === user) {
+      try {
+        await refreshWorkspace();
+      } catch (error) {
+        if (error.status === 401) { showLogin(); return; }
+        showToast(describeError(error, "prod.common.loadFailed"));
+      }
+    }
+  } finally {
+    if (state.user === user) {
+      state.satelliteBusy = false;
+      renderSatellitePanel();
+    }
+  }
+}
+
+async function loadSatelliteResult(plotId, imageOnly = false) {
+  if (state.satelliteBusy || state.satelliteLoading.has(plotId)) return;
+  const plot = state.plots.find((item) => item.id === plotId);
+  if (!plot?.satelliteOperationId) return;
+  const user = state.user;
+  state.satelliteLoading.add(plotId);
+  state.satelliteErrors.delete(plot.id);
+  renderSatellitePanel();
+  try {
+    const operation = imageOnly ? state.satelliteOperations.get(plotId)
+      : await api(`/api/v1/satellite/analyses/${encodeURIComponent(plot.satelliteOperationId)}`);
+    if (state.user !== user) return;
+    state.satelliteOperations.set(plot.id, operation);
+    if (!["queued", "processing"].includes(operation.status)) state.satelliteKeys.delete(plot.id);
+    if (imageOnly) {
+      const result = operation.results?.find((item) => item.plotId === plot.id);
+      if (!result) throw new Error(t("prod.sat.noResult"));
+      const blob = await api(`/api/v1/satellite/analyses/${encodeURIComponent(operation.id)}/images/${encodeURIComponent(plot.id)}`,
+        { responseType: "blob", headers: { Accept: result.contentType } });
+      if (state.user !== user) return;
+      const key = `${operation.id}/${plot.id}`;
+      const previous = state.satelliteImages.get(key);
+      if (previous) URL.revokeObjectURL(previous);
+      const url = URL.createObjectURL(blob);
+      state.satelliteImages.set(key, url);
+      if (result.contentType === "image/tiff") {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `satellite-${plot.id}.tiff`;
+        link.hidden = true;
+        document.body.append(link);
+        link.click();
+        link.remove();
+      }
+    }
+  } catch (error) {
+    if (state.user !== user) return;
+    if (error.status === 401) { showLogin(); return; }
+    state.satelliteErrors.set(plot.id, describeError(error, "prod.sat.failed"));
+  } finally {
+    if (state.user === user) {
+      state.satelliteLoading.delete(plotId);
+      renderSatellitePanel();
+    }
+  }
 }
 
 function renderPlotsOverview() {
@@ -1225,6 +1388,17 @@ accountToggle.addEventListener("click", (event) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".account-menu")) closeAccountMenu();
 
+  if (event.target.closest("[data-satellite-start]")) {
+    void startSatelliteAnalysis();
+    return;
+  }
+  const satelliteLoad = event.target.closest("[data-satellite-load]");
+  const satelliteImage = event.target.closest("[data-satellite-image]");
+  if (satelliteLoad || satelliteImage) {
+    void loadSatelliteResult(satelliteImage?.dataset.satelliteImage ?? satelliteLoad.dataset.satelliteLoad,
+      Boolean(satelliteImage));
+    return;
+  }
   const dialogClose = event.target.closest("[data-dialog-close]");
   if (dialogClose) {
     dialogClose.closest("dialog")?.close();
