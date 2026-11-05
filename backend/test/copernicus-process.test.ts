@@ -514,7 +514,55 @@ test("analysis stores one image per plot, honours the plot limit and records fai
   assert.equal(outcome.results[0]!.plotId, "p1");
   assert.equal(outcome.failures.length, 1);
   assert.equal(outcome.failures[0]!.plotId, "p2");
+  assert.equal(outcome.failures[0]!.stage, "geometry");
   assert.deepEqual(outcome.skippedPlotIds, ["p3"]);
+});
+
+test("analysis distinguishes storage failures after receiving imagery without exposing raw storage errors", async () => {
+  const config = baseConfig();
+  const { client, requests } = stubClient();
+  const service = createCopernicusService(adminPool("org_admin", [], realStoredConfig(config)), config, client);
+  const runtime = { settings: defaultProcessSettings(), credentials };
+  const cases = [
+    { error: Object.assign(new Error("secret/path"), { name: "CredentialsProviderError" }), expected: /storage authentication failed/ },
+    { error: Object.assign(new Error("secret/path"), { name: "AccessDenied" }), expected: /bucket write permissions/ },
+    { error: Object.assign(new Error("secret/path"), { name: "NoSuchBucket" }), expected: /bucket does not exist/ },
+    { error: Object.assign(new Error("secret/path"), { code: "EROFS" }), expected: /filesystem is not writable/ },
+    { error: new Error("secret/path"), expected: /saving it failed/ },
+    { error: "secret/path", expected: /saving it failed/ },
+  ];
+  for (const { error, expected } of cases) {
+    const outcome = await service.analyse(runtime, [{ id: plotId, polygon }], async () => { throw error; });
+    assert.equal(outcome.results.length, 0);
+    assert.equal(outcome.failures[0]!.stage, "storage");
+    assert.match(outcome.failures[0]!.message, /Satellite imagery was received/);
+    assert.match(outcome.failures[0]!.message, expected);
+    assert.doesNotMatch(JSON.stringify(outcome), /secret\/path/);
+  }
+  assert.equal(requests.length, cases.length);
+});
+
+test("analysis records authentication, provider and response-reading failures at the correct stage", async () => {
+  const config = baseConfig();
+  const runtime = { settings: defaultProcessSettings(), credentials };
+  const cases = [
+    { error: new ProcessApiError("token", "Authentication failed (HTTP 401)", 401), stage: "token", expected: /Authentication failed/ },
+    { error: new ProcessApiError("process", "Process API returned HTTP 400", 400), stage: "process", expected: /HTTP 400/ },
+    { error: new Error("private response details"), stage: "process", expected: /response could not be read/ },
+  ];
+  for (const { error, stage, expected } of cases) {
+    const { client } = stubClient({ process: async () => { throw error; } });
+    const service = createCopernicusService(adminPool("org_admin", [], realStoredConfig(config)), config, client);
+    let persisted = false;
+    const outcome = await service.analyse(runtime, [{ id: plotId, polygon }], async () => {
+      persisted = true;
+      return "unused";
+    });
+    assert.equal(persisted, false);
+    assert.equal(outcome.failures[0]!.stage, stage);
+    assert.match(outcome.failures[0]!.message, expected);
+    assert.doesNotMatch(JSON.stringify(outcome), /private response details/);
+  }
 });
 
 /* ---------- satellite operation flow ---------- */
@@ -607,7 +655,10 @@ test("a satellite request fails clearly when no plot matches or the API rejects 
   );
   assert.equal(rejected.result.data.status, "failed");
   assert.match(String(rejected.result.data.message), /Invalid evalscript/);
-  assert.deepEqual((rejected.result.data as unknown as { failures: unknown[] }).failures.length, 1);
+  const failures = (rejected.result.data as unknown as { failures: Array<{ plotId: string; stage: string }> }).failures;
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0]!.plotId, plotId);
+  assert.equal(failures[0]!.stage, "process");
 });
 
 /* ---------- admin UI ---------- */

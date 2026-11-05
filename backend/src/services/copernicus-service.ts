@@ -34,7 +34,7 @@ export type AnalysisResult = {
 };
 export type AnalysisOutcome = {
   results: AnalysisResult[];
-  failures: Array<{ plotId: string; message: string }>;
+  failures: Array<{ plotId: string; stage: "geometry" | "token" | "process" | "storage"; message: string }>;
   skippedPlotIds: string[];
 };
 
@@ -220,9 +220,12 @@ export function createCopernicusService(
         skippedPlotIds: plots.slice(settings.maxPlotsPerRun).map((plot) => plot.id),
       };
       for (const plot of selected) {
+        let stage: "geometry" | "process" | "storage" = "geometry";
         try {
           const body = buildProcessRequest(settings, parsePolygon(plot.polygon), now);
+          stage = "process";
           const result = await client.process(settings, credentials, body);
+          stage = "storage";
           const storagePath = await persist(plot.id, result.bytes, extensionFor(settings.output.format));
           outcome.results.push({
             plotId: plot.id,
@@ -233,11 +236,11 @@ export function createCopernicusService(
             to: body.input.data[0]!.dataFilter.timeRange.to,
           });
         } catch (error) {
+          const failureStage = error instanceof ProcessApiError ? error.stage : stage;
           outcome.failures.push({
             plotId: plot.id,
-            message: error instanceof ProcessApiError || error instanceof AppError
-              ? error.message
-              : "The plot could not be analysed.",
+            stage: failureStage,
+            message: analysisFailureMessage(error, failureStage),
           });
         }
       }
@@ -247,3 +250,28 @@ export function createCopernicusService(
 }
 
 export type CopernicusService = ReturnType<typeof createCopernicusService>;
+
+function analysisFailureMessage(error: unknown, stage: "geometry" | "token" | "process" | "storage"): string {
+  if (stage !== "storage" && (error instanceof ProcessApiError || error instanceof AppError)) return error.message;
+  if (stage === "storage") {
+    const code = error instanceof Error ? error.name : "";
+    const errno = typeof error === "object" && error !== null && "code" in error ? error.code : null;
+    if (code === "CredentialsProviderError" || code === "InvalidAccessKeyId"
+      || code === "SignatureDoesNotMatch" || code === "ExpiredToken") {
+      return "Satellite imagery was received, but storage authentication failed. Check the backend's S3 credentials.";
+    }
+    if (code === "AccessDenied") {
+      return "Satellite imagery was received, but S3 denied storage access. Check bucket write permissions.";
+    }
+    if (code === "NoSuchBucket") {
+      return "Satellite imagery was received, but the configured S3 bucket does not exist.";
+    }
+    if (errno === "EROFS" || errno === "EACCES" || errno === "EPERM") {
+      return "Satellite imagery was received, but the storage filesystem is not writable. Configure durable S3 storage for the deployed backend.";
+    }
+    return "Satellite imagery was received, but saving it failed. Check the backend's object storage configuration and availability.";
+  }
+  return stage === "geometry"
+    ? "The plot geometry could not be prepared for satellite analysis."
+    : "The satellite response could not be read. Retry the analysis; if it persists, check the Copernicus connection.";
+}

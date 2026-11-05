@@ -485,6 +485,7 @@ async function submit(auth: AuthContext, request: AuditContext, id: string, idem
     succeeded,
     failed: outcome.failures.length,
     skipped: outcome.skippedPlotIds.length,
+    failures: outcome.failures,
    });
    return row!;
   });

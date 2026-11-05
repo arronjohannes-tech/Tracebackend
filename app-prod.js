@@ -51,6 +51,7 @@ const state = {
   selectedPlotIds: new Set(),
   satelliteBusy: false,
   satelliteLoading: new Set(),
+  satelliteStatusLoaded: new Set(),
   satelliteOperations: new Map(),
   satelliteKeys: new Map(),
   satelliteErrors: new Map(),
@@ -216,6 +217,7 @@ function showLogin() {
   state.selectedPlotIds.clear();
   state.satelliteBusy = false;
   state.satelliteLoading.clear();
+  state.satelliteStatusLoaded.clear();
   state.satelliteOperations.clear();
   state.satelliteKeys.clear();
   state.satelliteErrors.clear();
@@ -475,15 +477,19 @@ function renderSatellitePanel() {
       const imageKey = result ? `${operation.id}/${plot.id}` : null;
       const image = state.satelliteImages.get(imageKey);
       const error = state.satelliteErrors.get(plot.id);
+      const failure = operation?.failures?.find((item) => item.plotId === plot.id);
       return `<article class="satellite-result">
         <h4>${escapeHtml(plot.farmName)}</h4>
         <p role="status">${escapeHtml(outcome ? t(`prod.sat.${outcome}`)
           : t(plot.satelliteOperationId ? "prod.sat.available" : "plot.eoPending"))}</p>
+        ${state.satelliteStatusLoaded.has(plot.id) ? `<p role="status">${escapeHtml(t("prod.sat.refreshed"))}</p>` : ""}
+        ${outcome === "failed" ? `<p>${escapeHtml(t("prod.sat.retryHint"))}</p>` : ""}
         ${operation?.message ? `<p class="muted">${escapeHtml(operation.message)}</p>` : ""}
+        ${failure ? `<p class="form-status">${escapeHtml(failure.stage ? `${failure.stage}: ` : "")}${escapeHtml(failure.message)}</p>` : ""}
         ${error ? `<p class="form-status" role="alert">${escapeHtml(error)}</p>` : ""}
         ${plot.satelliteOperationId && !state.satelliteBusy ? `<button class="secondary-button" type="button"
           data-satellite-load="${escapeHtml(plot.id)}" ${state.satelliteLoading.has(plot.id) ? "disabled" : ""}>
-          ${escapeHtml(t("prod.sat.load"))}</button>` : ""}
+          ${escapeHtml(t(state.satelliteLoading.has(plot.id) ? "prod.sat.loading" : "prod.sat.load"))}</button>` : ""}
         ${result ? `<p>${escapeHtml(formatDate(result.from))} – ${escapeHtml(formatDate(result.to))}</p>
           <button class="secondary-button" type="button" data-satellite-image="${escapeHtml(plot.id)}"
             ${state.satelliteBusy || state.satelliteLoading.has(plot.id) ? "disabled" : ""}>
@@ -510,6 +516,7 @@ async function startSatelliteAnalysis() {
       const key = state.satelliteKeys.get(plot.id) ?? crypto.randomUUID();
       state.satelliteKeys.set(plot.id, key);
       state.satelliteErrors.delete(plot.id);
+      state.satelliteStatusLoaded.delete(plot.id);
       try {
         const operation = await api("/api/v1/satellite/analyses", {
           method: "POST",
@@ -550,6 +557,7 @@ async function loadSatelliteResult(plotId, imageOnly = false) {
   const user = state.user;
   state.satelliteLoading.add(plotId);
   state.satelliteErrors.delete(plot.id);
+  if (!imageOnly) state.satelliteStatusLoaded.delete(plot.id);
   renderSatellitePanel();
   try {
     const operation = imageOnly ? state.satelliteOperations.get(plotId)
@@ -557,6 +565,7 @@ async function loadSatelliteResult(plotId, imageOnly = false) {
     if (state.user !== user) return;
     state.satelliteOperations.set(plot.id, operation);
     if (!["queued", "processing"].includes(operation.status)) state.satelliteKeys.delete(plot.id);
+    if (!imageOnly) state.satelliteStatusLoaded.add(plot.id);
     if (imageOnly) {
       const result = operation.results?.find((item) => item.plotId === plot.id);
       if (!result) throw new Error(t("prod.sat.noResult"));
