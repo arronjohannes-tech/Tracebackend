@@ -21,4 +21,14 @@ Bei Fehlern unterscheiden neue Analyseaufträge die Schritte `geometry`, `token`
 Migrationen 001–004 sind vorbereitet, aber nicht auf einer produktiven Datenbank angewendet.
 Produktion benötigt HTTPS und S3. Echte iPhone-, S3- und vollständige PostGIS-Abnahme stehen aus.
 
+## Neon Object Storage
+
+`neon.ts` deklariert den privaten Bucket `uploads`. Nach `neon deploy` liegen die
+branchgebundenen Verbindungswerte in der ignorierten `.env.local` (bzw. `.env`).
+`npm run test:neon-storage` schreibt eine kleine Textdatei mit dem Files SDK,
+listet ihren eindeutigen `verification/`-Pfad und vergleicht den Download bytegenau.
+Der Test hinterlaesst die Datei als Nachweis im Bucket und gibt keine Secrets aus.
+Er nutzt nur die lokale Neon-Umgebung; die Vercel-Produktivvariablen und die
+bisherige Backend-Zuordnung zu `tracebackend-documents` werden nicht umgestellt.
+
 Die separate Traceright-App wird nicht automatisch mit diesem Backend kompatibel.

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "python scripts/serve.py",
     "test": "node --test tests/*.test.mjs",
+    "test:neon-storage": "node scripts/test-neon-storage.mjs",
     "backend:dev": "npm --prefix backend run dev",
     "backend:migrate": "npm --prefix backend run migrate",
     "backend:test": "npm --prefix backend test",
@@ -14,7 +15,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1143.0",
+    "@aws-sdk/s3-presigned-post": "^3.1162.0",
     "@aws-sdk/s3-request-presigner": "^3.1143.0",
-    "dotenv": "^18.0.4"
+    "@neon/config": "^1.11.3",
+    "@neon/env": "^1.6.15",
+    "dotenv": "^18.0.4",
+    "files-sdk": "^3.1.2"
   }
 }
