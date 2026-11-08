@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { queryOne } from "../db.js";
+import type { Role } from "../types.js";
 export type DocumentRow = {
  id: string; organization_id: string; storage_key: string; file_name: string; mime_type: string;
  byte_size: number; status: string; upload_token_hash: string; upload_expires_at: Date;
@@ -12,6 +13,13 @@ export function byKey(client: PoolClient, org: string, key: string) {
 }
 export function byId(client: PoolClient, id: string, org?: string) {
  return queryOne<DocumentRow>(client, "SELECT * FROM documents WHERE id = $1 AND ($2::uuid IS NULL OR organization_id = $2) FOR UPDATE", [id, org ?? null]);
+}
+export function uploadOwner(client: PoolClient, id: string) {
+ return queryOne<{ id: string; organization_id: string; role: Role; assigned_roles: Role[]; token_version: number }>(
+  client, `SELECT u.id, u.organization_id, u.role, u.assigned_roles::text[] AS assigned_roles, u.token_version FROM users u
+   JOIN documents d ON d.created_by=u.id AND d.organization_id=u.organization_id
+   JOIN organizations o ON o.id=u.organization_id
+   WHERE d.id=$1 AND u.active AND u.deleted_at IS NULL AND o.active`, [id]);
 }
 export async function insert(client: PoolClient, values: unknown[]) {
  await client.query("INSERT INTO documents(id,organization_id,file_name,mime_type,byte_size,storage_key,upload_token_hash,idempotency_key,created_by,upload_expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",values);

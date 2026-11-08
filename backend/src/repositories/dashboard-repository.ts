@@ -235,7 +235,7 @@ export async function getOrganization(
         document_count: number; operation_count: number;
     }>(client, `
     SELECT o.id, o.name, o.slug, o.active, o.created_at, o.updated_at,
-      (SELECT count(*)::int FROM users WHERE organization_id = o.id) AS user_count,
+      (SELECT count(*)::int FROM users WHERE organization_id = o.id AND deleted_at IS NULL) AS user_count,
       (SELECT count(*)::int FROM suppliers WHERE organization_id = o.id) AS supplier_count,
       (SELECT count(*)::int FROM plots WHERE organization_id = o.id) AS plot_count,
       (SELECT count(*)::int FROM shipments WHERE organization_id = o.id) AS shipment_count,
@@ -251,7 +251,7 @@ export async function getOrganization(
         : null;
     const members = options.includeMembers
         ? await queryMany<{ id: string; display_name: string; email: string; role: string; active: boolean }>(client,
-            "SELECT id, display_name, email, role, active FROM users WHERE organization_id = $1 ORDER BY email",
+            "SELECT id, display_name, email, role, active FROM users WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY email",
             [organizationId])
         : [];
     return {

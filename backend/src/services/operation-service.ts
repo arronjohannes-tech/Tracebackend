@@ -14,6 +14,7 @@ import type { AuthContext } from "../types.js";
 import { EuSubmissionError, submitDds, type EuAdapterConfig } from "../soap.js";
 import { createCopernicusService, type CopernicusService, type ProcessRuntime } from "./copernicus-service.js";
 import * as copernicusRepository from "../repositories/copernicus-repository.js";
+import { hasRole } from "../permissions.js";
 
 export type OperationKind = "satellite" | "evidence_pack" | "dds";
 export type OperationRow = {
@@ -191,7 +192,7 @@ export function createOperationService(
  const store = createObjectStore(config);
   async function createOperation(auth: AuthContext, request: AuditContext, kind: OperationKind, body: CreateOperationInput, idempotencyKey: string): Promise<{ operation: OperationRow; created: boolean }> {
     if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
-    if (!["org_admin", "reviewer", "field_agent"].includes(auth.role)) {
+    if (!hasRole(auth, ["org_admin", "reviewer", "field_agent"])) {
       throw new AppError(403, "FORBIDDEN", "This role cannot create operational requests.");
     }
     return withContext(pool, auth, async (client) => {
@@ -239,7 +240,7 @@ export function createOperationService(
 
 async function validate(auth: AuthContext, request: AuditContext, id: string, idempotencyKey: string): Promise<StoredDdsActionResponse> {
     if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
-    if (!["org_admin", "reviewer", "field_agent"].includes(auth.role)) {
+    if (!hasRole(auth, ["org_admin", "reviewer", "field_agent"])) {
       throw new AppError(403, "FORBIDDEN", "This role cannot validate DDS drafts.");
     }
     const response = await withContext(pool, auth, async (client) => {
@@ -285,7 +286,7 @@ async function validate(auth: AuthContext, request: AuditContext, id: string, id
 }
 async function submit(auth: AuthContext, request: AuditContext, id: string, idempotencyKey: string): Promise<StoredDdsActionResponse> {
     if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
-    if (auth.role !== "org_admin") {
+    if (!hasRole(auth, ["org_admin"])) {
       throw new AppError(403, "FORBIDDEN", "Only an organization administrator may submit DDS drafts.");
     }
     const prepared = await withContext(pool, auth, async (client) => {

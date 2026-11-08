@@ -7,6 +7,7 @@ import { parsePolygon } from "../geo.js";
 import type { AuthContext, GeoJsonPolygon } from "../types.js";
 import type { PushOperation, GeofenceEvaluation, GeofenceViolationDetail } from "../domain/sync-contract.js";
 import * as repository from "../repositories/sync-repository.js";
+import { assertPermission, hasRole } from "../permissions.js";
 
 function requireOrganization(auth: AuthContext): string {
  if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "An organization-scoped account is required.");
@@ -24,9 +25,10 @@ export function createSyncService(pool: Pool) {
  return {
  async push(auth: AuthContext, audit: AuditContext, body: {deviceId: string; operations: PushOperation[]}) {
   const organizationId = requireOrganization(auth);
-  if (!["org_admin", "field_agent"].includes(auth.role)) throw new AppError(403, "FORBIDDEN", "This role cannot push mobile changes.");
+  if (!hasRole(auth, ["org_admin", "field_agent"])) throw new AppError(403, "FORBIDDEN", "This role cannot push mobile changes.");
   const polygons = new Map<string, GeoJsonPolygon>();
   for (const operation of body.operations) {
+   assertPermission(auth, operation.entityType === "supplier" ? "suppliers" : "plots", true);
    if (operation.entityId !== operation.payload.id) throw conflict("ENTITY_ID_MISMATCH", "Operation entityId must equal payload.id.");
    if (operation.entityType === "plot") polygons.set(operation.id, parsePolygon(operation.payload.polygon));
   }
@@ -76,6 +78,8 @@ export function createSyncService(pool: Pool) {
   return {accepted: result.accepted, conflicts: result.conflicts, applied: result.applied};
  },
  async pull(auth: AuthContext, cursor: string, limit: number) {
+  assertPermission(auth, "suppliers");
+  assertPermission(auth, "plots");
   const org = requireOrganization(auth);
   const changes = await withContext(pool, auth, client=>repository.getChanges(client, org, cursor, limit + 1));
   const hasMore = changes.length > limit, page = changes.slice(0, limit);

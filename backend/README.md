@@ -52,13 +52,25 @@ framework preset. The production environment requires:
 - `ADMIN_ORIGIN`: public HTTPS origin allowed to use the administration SPA
 - `NODE_ENV=production`
 - `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
-- `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for supplier invitations
+- `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for transactional email (supplier invitations and password resets)
 
 Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql`, `007_copernicus_process.sql` and `008_plot_corrections.sql` with `npm run migrate` before deploying
 the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
 until both mail settings are present. Invitations expire after seven days; only
 token hashes are stored, and a link can be used once. The registration page is
 served by the Tracehub frontend at `/register.html`, not by the backend.
+
+Password reset uses the same Resend configuration (`RESEND_API_KEY` and
+`INVITATION_FROM_EMAIL`) and the `TRACEHUB_BASE_URL` frontend origin. Apply
+`011_password_reset.sql` with `npm run migrate` before enabling the password
+reset endpoints. If the email provider is not configured or delivery fails,
+forgot-password returns `503 MAIL_UNAVAILABLE`; it does not report a successful
+request. The email link is
+`{TRACEHUB_BASE_URL}/index-prod.html#reset-password?token=<urlencoded-token>`;
+the frontend reads the token from the `reset-password` fragment route.
+`TRACEHUB_BASE_URL` must be the frontend origin that serves this page.
+Forgot-password is limited to five requests per minute per client IP and
+reset-password to ten requests per minute.
 
 Vercel supplies `PORT` automatically. The server binds to all interfaces and uses
 `/tmp/sctracker-storage` when `STORAGE_DIR` is not set. Vercel's local filesystem
@@ -73,9 +85,66 @@ using those workflows in production.
 - Opaque 256-bit refresh tokens are stored only as SHA-256 hashes, rotate on every
   use, and belong to a revocable token family.
 - Roles: `system_admin`, `org_admin`, `reviewer`, `field_agent`, `auditor`.
+- Accounts can have multiple roles. The primary role remains in the JWT for
+  compatibility; assigned roles and section permissions are read from the database
+  on each authenticated request, never accepted from the browser.
 - Pass `Authorization: Bearer <accessToken>` on all protected routes.
 - Success: `{ "data": ... }`; error:
   `{ "error": { "code": "...", "message": "...", "details": ... } }`.
+
+### Tracehub user and role administration
+
+Apply all pending numbered migrations with `npm run migrate` **before** deploying
+the updated backend and frontend. `010_user_permissions.sql` backfills existing
+accounts with their current role; `011_password_reset.sql` adds reset tokens.
+These migrations are not applied automatically by a deployment.
+
+The productive frontend adds **User management** and **Role management** for
+`org_admin` and `system_admin`. Organization administrators can manage only their
+own organization. System administrators select an organization before managing
+its users; global system-administrator accounts are not editable here.
+
+- User creation, details, name/email/password edits, activation/deactivation,
+  multiple-role assignment, search, and soft deletion are supported.
+- Soft deletion retains audit history and reserves the email within that
+  organization; deleted accounts are excluded from login, refresh and reset.
+- Self deletion/deactivation and self role changes are blocked. Organization-row
+  locking protects the last active organization administrator, including
+  concurrent changes.
+- Changing email, password, roles or active status revokes access/refresh sessions
+  and outstanding document-upload authorizations. Name-only changes do not revoke
+  sessions. Editing one's own email/password returns the frontend to sign-in.
+- The five existing roles are fixed; this feature manages assignments and rights,
+  not custom role creation. Permissions combine as the union of the user's roles.
+- Per-organization **View / Edit** rights cover overview, suppliers, plots,
+  shipments, risk/evidence, DDS, guide, users and roles. Edit implies View.
+  Administration cannot be assigned to non-administrators or removed from
+  organization administrators. System-administrator permissions are protected.
+- Missing overrides preserve existing rights. Business-specific safeguards
+  (for example, who may submit DDS or delete shipments) still apply.
+- The API rejects forbidden section access. Combined dashboard/organization
+  responses remove unauthorized records/counts. Non-secret feature flags remain
+  available to render satellite/DDS actions. Upload content rechecks the owner's
+  current rights even when the request uses an upload token.
+- Permission changes apply to the next API request; the frontend reloads its
+  navigation and data on workspace refresh. Offline sync push checks each entity;
+  sync pull currently requires both supplier and plot View rights to preserve its
+  shared cursor contract.
+
+Forgot-password/reset is public and uses the existing Resend settings described
+above. Only token hashes are stored. Tokens expire after one hour, are consumed
+transactionally, and become invalid after security-relevant account changes.
+The frontend handles reset links on initial load and navigation in an already
+open tab, clears the current session, and immediately removes the token fragment
+from the address bar. A successful reset revokes access/refresh sessions and
+outstanding uploads; inactive/deleted users cannot reset their passwords.
+
+Focused validation: `node --import tsx --test test/permissions.test.ts
+test/access-integration.test.ts test/password-reset.test.ts`. The isolated
+PostgreSQL integration test runs on Windows using the existing embedded-Postgres
+dependency, covers migrations 010/011 on minimal tables, tenant RLS, lifecycle,
+last-admin concurrency and reset expiry/single-use. It never connects to
+production and does not validate the full PostGIS schema.
 
 ## API contract
 
@@ -85,6 +154,11 @@ using those workflows in production.
 | POST | `/api/v1/auth/refresh` | Rotate `{refreshToken}` and return the same organization selection fields |
 | POST | `/api/v1/auth/logout` | Revoke supplied refresh token |
 | GET | `/api/v1/auth/me` | Current principal |
+| GET/POST | `/api/v1/admin/users` | Organization-scoped user list/create; create accepts `{email,displayName,password,roles,active?}` |
+| PATCH/DELETE | `/api/v1/admin/users/:userId` | Edit account or soft-delete it; administrators only, last-admin/self-access protections |
+| GET/PUT | `/api/v1/admin/roles` | Read/save complete per-organization role matrix: `{permissions:[{role,section,read,write}]}`; system admin selects `?organizationId=` |
+| POST | `/api/v1/auth/forgot-password` | Public `{email,organizationSlug?}` → `202 {"data":{"message":"If an active account matches those details, password reset instructions will be sent."}}` whether a matching account exists or not; sends a one-hour, single-use link when eligible |
+| POST | `/api/v1/auth/reset-password` | Public `{token,password}` (password: 12–1024 chars) → `200 {"data":{"reset":true}}`; invalid, expired, used, inactive, or deleted-account tokens return `400 INVALID_RESET_TOKEN` |
 | POST | `/api/v1/supplier-invitations` | Authenticated organization administrator: `{legalName,email,organizationId?}`; sends a registration link |
 | POST | `/api/v1/supplier-invitations/resolve` | Public `{token}`; validates link and returns invited organization, supplier name and email |
 | POST | `/api/v1/supplier-invitations/register` | Public `{token,legalName,tradingName,registrationNumber,taxId,countryCode,region,streetAddress,city,postalCode,contactName,contactPhone,website,password}`; creates supplier and field-agent account and returns a login session |

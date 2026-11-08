@@ -13,6 +13,8 @@ export type AuthContext = {
   userId: string;
   organizationId: string | null;
   role: Role;
+  roles?: Role[];
+  permissions?: import("./permissions.js").Permissions;
   tokenVersion: number;
 };
 

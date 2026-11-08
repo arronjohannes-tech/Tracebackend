@@ -13,8 +13,9 @@ import {
   sendData,
   uuidSchema,
 } from "../http.js";
-import { encryptSecret, hashPassword } from "../security.js";
+import { encryptSecret } from "../security.js";
 import { roles, type Role } from "../types.js";
+import { createUserManagementService, createUserSchema, updateUserSchema } from "../services/user-management-service.js";
 
 const organizationSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -22,18 +23,6 @@ const organizationSchema = z.object({
 });
 const organizationPatchSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
-  active: z.boolean().optional(),
-}).refine((value) => Object.keys(value).length > 0);
-const userSchema = z.object({
-  email: z.string().email().transform((value) => value.toLowerCase()),
-  displayName: z.string().trim().min(1).max(120),
-  password: z.string().min(12).max(1024),
-  role: z.enum(roles).exclude(["system_admin"]),
-});
-const userPatchSchema = z.object({
-  displayName: z.string().trim().min(1).max(120).optional(),
-  password: z.string().min(12).max(1024).optional(),
-  role: z.enum(roles).exclude(["system_admin"]).optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0);
 const adminUserQuerySchema = z.object({
@@ -124,6 +113,7 @@ export async function registerAdminRoutes(
   authenticate: (request: FastifyRequest) => Promise<void>,
 ): Promise<void> {
   const protectedRoute = { preHandler: authenticate };
+  const userManagement = createUserManagementService(pool);
 
   app.get("/api/v1/admin/organizations", protectedRoute, async (request, reply) => {
     const auth = requireRoles(request, ["system_admin", "org_admin", "reviewer", "auditor"]);
@@ -196,12 +186,7 @@ export async function registerAdminRoutes(
   ) => {
     const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
-    const users = await withContext(pool, auth, (client) =>
-      queryMany(client,
-        `SELECT id, organization_id AS "organizationId", email, display_name AS "displayName",
-                role, active, created_at AS "createdAt", updated_at AS "updatedAt"
-           FROM users WHERE organization_id = $1 ORDER BY email`,
-        [organizationId]));
+    const users = await userManagement.list(auth, organizationId);
     return sendData(reply, users);
   };
 
@@ -212,22 +197,8 @@ export async function registerAdminRoutes(
   ) => {
     const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
-    const body = parse(userSchema, request.body);
-    const passwordHash = await hashPassword(body.password);
-    const user = await withContext(pool, auth, async (client) => {
-      const result = await queryOne(client,
-        `INSERT INTO users(organization_id, email, display_name, password_hash, role)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, organization_id AS "organizationId", email,
-                   display_name AS "displayName", role, active, created_at AS "createdAt"`,
-        [organizationId, body.email, body.displayName, passwordHash, body.role]);
-      await writeAudit(client, request, auth, "user.create", "user", String(result!.id), {
-        organizationId,
-        email: body.email,
-        role: body.role,
-      });
-      return result;
-    });
+    const body = parse(createUserSchema, request.body);
+    const user = await userManagement.create(auth, request, organizationId, body);
     return sendData(reply, user, 201);
   };
 
@@ -239,48 +210,8 @@ export async function registerAdminRoutes(
   ) => {
     const organizationId = resolveManagedOrganizationId(request, organizationIdFromPath);
     const auth = request.auth!;
-    const body = parse(userPatchSchema, request.body);
-    if (userId === auth.userId && body.active === false) {
-      throw badRequest("SELF_DEACTIVATION", "You cannot deactivate your own account.");
-    }
-    const passwordHash = body.password ? await hashPassword(body.password) : null;
-    const user = await withContext(pool, auth, async (client) => {
-      const result = await queryOne(client,
-        `UPDATE users
-            SET display_name = COALESCE($3, display_name),
-                password_hash = COALESCE($4, password_hash),
-                role = COALESCE($5::user_role, role),
-                active = COALESCE($6, active),
-                token_version = CASE
-                  WHEN $4::text IS NOT NULL OR $5::user_role IS NOT NULL OR $6::boolean = false
-                  THEN token_version + 1 ELSE token_version END
-          WHERE id = $1 AND organization_id = $2 AND role <> 'system_admin'
-          RETURNING id, organization_id AS "organizationId", email,
-                    display_name AS "displayName", role, active, updated_at AS "updatedAt"`,
-        [
-          userId,
-          organizationId,
-          body.displayName ?? null,
-          passwordHash,
-          body.role ?? null,
-          body.active ?? null,
-        ]);
-      if (!result) throw notFound("User");
-      if (passwordHash || body.role || body.active === false) {
-        await client.query(
-          "UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, now()) WHERE user_id = $1",
-          [userId],
-        );
-      }
-      await writeAudit(client, request, auth, "user.update", "user", userId, {
-        organizationId,
-        displayName: body.displayName,
-        role: body.role,
-        active: body.active,
-        passwordChanged: Boolean(body.password),
-      });
-      return result;
-    });
+    const body = parse(updateUserSchema, request.body);
+    const user = await userManagement.update(auth, request, organizationId, userId, body);
     return sendData(reply, user);
   };
 
@@ -311,6 +242,13 @@ export async function registerAdminRoutes(
   app.patch("/api/v1/admin/users/:userId", protectedRoute, async (request, reply) => {
     const { userId } = parse(z.object({ userId: uuidSchema }), request.params);
     return updateOrganizationUser(request, reply, userId);
+  });
+
+  app.delete("/api/v1/admin/users/:userId", protectedRoute, async (request, reply) => {
+    const organizationId = resolveManagedOrganizationId(request);
+    const { userId } = parse(z.object({ userId: uuidSchema }), request.params);
+    await userManagement.update(request.auth!, request, organizationId, userId, {}, true);
+    return sendData(reply, { deleted: true });
   });
 
   app.get("/api/v1/admin/organizations/:organizationId/config", protectedRoute, async (request, reply) => {

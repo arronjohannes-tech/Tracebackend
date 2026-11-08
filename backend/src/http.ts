@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { z, type ZodType } from "zod";
 import { AppError, badRequest, forbidden } from "./errors.js";
 import type { AuthContext, Role } from "./types.js";
+import { hasRole } from "./permissions.js";
 
 export function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value);
@@ -18,7 +19,7 @@ export function authOf(request: FastifyRequest): AuthContext {
 
 export function requireRoles(request: FastifyRequest, allowed: readonly Role[]): AuthContext {
   const auth = authOf(request);
-  if (!allowed.includes(auth.role)) throw forbidden();
+  if (!hasRole(auth, allowed)) throw forbidden();
   return auth;
 }
 

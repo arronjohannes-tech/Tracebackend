@@ -15,6 +15,7 @@ import {
   verifyPassword,
 } from "../security.js";
 import type { AuthContext, Role } from "../types.js";
+import type { Permissions } from "../permissions.js";
 
 type UserRow = {
   id: string;
@@ -26,6 +27,8 @@ type UserRow = {
   role: Role;
   active: boolean;
   token_version: number;
+  assigned_roles?: Role[];
+  permissions?: Permissions;
 };
 
 export const loginSchema = z.object({
@@ -42,6 +45,8 @@ export function publicUser(user: UserRow) {
     email: user.email,
     displayName: user.display_name,
     role: user.role,
+    roles: user.assigned_roles ?? [user.role],
+    permissions: user.permissions,
   };
 }
 
@@ -217,7 +222,8 @@ export function createAuthService(pool: Pool, config: AppConfig) {
     const user = await withContext(pool, auth, (client) =>
       repository.selectUsers3<UserRow>(client,[auth.userId]));
     if (!user) throw badRequest("USER_NOT_FOUND", "The authenticated user no longer exists.");
-    return publicUser(user);
+    return publicUser({ ...user, assigned_roles: auth.roles ?? [user.role],
+      ...(auth.permissions ? { permissions: auth.permissions } : {}) });
 }
  };
 }

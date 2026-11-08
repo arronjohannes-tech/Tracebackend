@@ -42,8 +42,12 @@ for (const page of ["index-demo.html", "index-prod.html"]) {
 }
 
 test("all translation keys used by the production script exist", async () => {
-  const script = await readFile(new URL("../app-prod.js", import.meta.url), "utf8");
-  const keys = [...script.matchAll(/\bt\(\s*"([\w.]+)"/g)].map((match) => match[1]);
+  const script = (await Promise.all(["../app-prod.js", "../src/access-management.mjs", "../src/password-recovery.mjs"]
+    .map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
+  const keys = [
+    ...[...script.matchAll(/\bt\(\s*"([\w.]+)"/g)].map((match) => match[1]),
+    ...[...script.matchAll(/data-i18n="([\w.]+)"/g)].map((match) => match[1]),
+  ];
   const dynamic = [
     ...["system_admin", "org_admin", "reviewer", "field_agent", "auditor"].map((role) => `prod.role.${role}`),
     ...["planned", "in_transit", "arrived", "cancelled"].map((status) => `prod.status.${status}`),
@@ -58,6 +62,8 @@ test("all translation keys used by the production script exist", async () => {
     ...["geometry", "area", "geofence", "duplicate", "evidence", "other"].map((category) => `prod.corr.category.${category}`),
     ...["ok", "fail", "pending"].map((tone) => `prod.pv.legend.${tone}`),
     ...["mock", "notConfigured", "failed", "running", "completed", "noResult"].map((outcome) => `prod.sat.${outcome}`),
+    ...["overview", "suppliers", "plots", "shipments", "risk", "dds", "guide", "users", "roles"]
+      .map((section) => `prod.access.section.${section}`),
   ];
 
   assert.ok(keys.length > 40);

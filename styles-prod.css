@@ -3175,3 +3175,10 @@ td small.plot-updated {
 .profile-dialog .link-button {
   color: var(--dialog-ink);
 }
+/* Access administration */
+.access-filters { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1rem; }
+.access-filters label, .access-form > label { display: grid; gap: .4rem; }
+.access-form { display: grid; gap: 1rem; min-width: min(28rem, 80vw); }
+.access-check { display: flex; align-items: center; gap: .4rem; white-space: nowrap; margin-block: .4rem; }
+.access-check input { width: auto; }
+[hidden] { display: none !important; }

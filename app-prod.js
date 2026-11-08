@@ -10,6 +10,8 @@ import {
   buildMapSvg, groupOptions, plotTone, plotsInGroup, plotsForPolygonView,
 } from "./src/plot-map.mjs?v=1";
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
+import { initAccessManagement } from "./src/access-management.mjs?v=1";
+import { initPasswordRecovery } from "./src/password-recovery.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
 const CORRECTION_SCOPES = ["plot", "group", "all"];
@@ -96,8 +98,11 @@ const formatNumber = (value, digits = 3) =>
 const shortId = (id) => String(id ?? "").slice(0, 8);
 const statusBadge = (status) =>
   `<span class="badge ${STATUS_TONE[status] ?? "neutral"}">${escapeHtml(labelFor("prod.status", status))}</span>`;
-const canWrite = () => WRITE_ROLES.includes(state.user?.role);
-const canDelete = () => ADMIN_ROLES.includes(state.user?.role);
+const userRoles = () => state.user?.roles ?? [state.user?.role];
+const canRead = (section) => Boolean(state.user?.permissions?.[section]?.read);
+const canEdit = (section) => Boolean(state.user?.permissions?.[section]?.write);
+const canWrite = (section = "plots") => canEdit(section) && userRoles().some((role) => WRITE_ROLES.includes(role));
+const canDelete = () => canEdit("shipments") && userRoles().some((role) => ADMIN_ROLES.includes(role));
 
 /* ---------- session ---------- */
 
@@ -191,6 +196,15 @@ const accountToggle = $("#account-toggle");
 const accountDropdown = $("#account-dropdown");
 const orgName = $("#org-name");
 let toastTimer;
+const accessManagement = initAccessManagement({
+  api, t, labelFor, escapeHtml, canRead, canEdit, currentUser: () => state.user, refresh: refreshWorkspace,
+  reauthenticate: () => {
+    sessionStorage.clear();
+    showLogin();
+    setAuthMessage(t("prod.access.signInAgain"));
+  },
+});
+const passwordRecovery = initPasswordRecovery({ t, onReset: showLogin });
 
 function showToast(text, duration = 3200) {
   toast.textContent = text;
@@ -207,6 +221,7 @@ function showApp() {
 }
 
 function showLogin() {
+  accessManagement.clear();
   state.dashboard = null;
   state.organization = null;
   state.shipments = [];
@@ -257,21 +272,22 @@ async function reloadData() {
   let corrections;
   [state.dashboard, state.shipments, state.organization, plots, corrections] = await Promise.all([
     api("/api/v1/dashboard"),
-    api("/api/v1/shipments"),
+    canRead("shipments") ? api("/api/v1/shipments") : [],
     api("/api/v1/organization"),
-    optional("/api/v1/plots"),
-    optional("/api/v1/plot-corrections"),
+    canRead("plots") ? optional("/api/v1/plots") : [],
+    canRead("plots") ? optional("/api/v1/plot-corrections") : [],
   ]);
   state.plotsFailed = plots === null || corrections === null;
   state.plots = plots ?? [];
   state.corrections = corrections ?? [];
+  await accessManagement.load();
 }
 
 async function loadWorkspace() {
   setAuthMessage(t("prod.login.loading"));
   try {
     if (!accessToken()) throw new ApiError("", 401);
-    state.user = storedUser() ?? await api("/api/v1/auth/me");
+    state.user = await api("/api/v1/auth/me");
     sessionStorage.setItem("user", JSON.stringify(state.user));
     await resolveOrganization();
     await reloadData();
@@ -287,8 +303,26 @@ async function loadWorkspace() {
 }
 
 async function refreshWorkspace() {
-  await reloadData();
-  renderAll();
+  try {
+    state.user = await api("/api/v1/auth/me");
+    sessionStorage.setItem("user", JSON.stringify(state.user));
+    await reloadData();
+    if (!canRead("plots")) {
+      state.selectedPlotIds.clear();
+      state.satelliteOperations.clear();
+      state.satelliteErrors.clear();
+      for (const url of state.satelliteImages.values()) URL.revokeObjectURL(url);
+      state.satelliteImages.clear();
+    }
+    $$("dialog[open]").forEach((dialog) => dialog.close());
+    renderAll();
+    showView(location.hash.slice(1) || "overview");
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    sessionStorage.clear();
+    showLogin();
+    setAuthMessage(t("prod.access.signInAgain"));
+  }
 }
 
 /* ---------- rendering ---------- */
@@ -305,8 +339,8 @@ function renderHeader() {
   $("#account-name").textContent = user?.displayName ?? "—";
   $("#account-role").textContent = labelFor("prod.role", user?.role);
   accountToggle.textContent = (user?.displayName ?? "?").trim().slice(0, 2).toUpperCase();
-  $("#new-shipment-button").hidden = !canWrite();
-  $("#invite-supplier-button").hidden = !ADMIN_ROLES.includes(user?.role);
+  $("#new-shipment-button").hidden = !canWrite("shipments");
+  $("#invite-supplier-button").hidden = !canEdit("suppliers") || !userRoles().some((role) => ADMIN_ROLES.includes(role));
 }
 
 function renderOverview() {
@@ -459,7 +493,7 @@ function renderSatellitePanel() {
   panel.hidden = !plots.length;
   if (!plots.length) return;
   const enabled = state.organization?.config?.satelliteEnabled === true;
-  const allowed = canRequestSatellite(state.user?.role);
+  const allowed = canEdit("plots") && userRoles().some(canRequestSatellite);
   const pending = plots.some((plot) =>
     ["queued", "processing"].includes(state.satelliteOperations.get(plot.id)?.status));
   panel.innerHTML = `
@@ -503,7 +537,7 @@ function renderSatellitePanel() {
 async function startSatelliteAnalysis() {
   if (state.satelliteBusy || state.satelliteLoading.size) return;
   const plots = visibleSatellitePlots();
-  if (!plots.length || !canRequestSatellite(state.user?.role)
+  if (!plots.length || !canEdit("plots") || !userRoles().some(canRequestSatellite)
     || !state.organization?.config?.satelliteEnabled) return;
   if (plots.some((plot) => ["queued", "processing"].includes(state.satelliteOperations.get(plot.id)?.status))) return;
   const user = state.user;
@@ -842,6 +876,9 @@ function renderAll() {
   renderShipments();
   renderRisk();
   renderDds();
+  accessManagement.render();
+  applyTranslations(document, state.language);
+  applyAccessVisibility();
 }
 
 /* ---------- details ---------- */
@@ -928,7 +965,7 @@ function buildDetail(kind, id) {
         [t("prod.common.id"), s.id],
       ],
       actions: [
-        canWrite() && { action: "edit-shipment", label: t("prod.common.edit"), className: "secondary-button" },
+        canWrite("shipments") && { action: "edit-shipment", label: t("prod.common.edit"), className: "secondary-button" },
         canDelete() && { action: "delete-shipment", label: t("prod.common.delete"), className: "danger-button" },
       ],
     };
@@ -987,10 +1024,13 @@ function buildDetail(kind, id) {
 
 let openDetailRef = null;
 function openDetail(kind, id) {
+  const operation = kind === "operation" ? state.dashboard?.operations?.find((item) => item.id === id) : null;
+  const section = operation?.kind === "satellite" ? "plots" : DETAIL_VIEW[kind];
+  if (!canRead(section)) { showToast(t("prod.access.denied")); return; }
   const detail = buildDetail(kind, id);
   if (!detail) return;
   openDetailRef = { kind, id };
-  showView(DETAIL_VIEW[kind]);
+  showView(section);
   $("#detail-eyebrow").textContent = detail.eyebrow;
   $("#detail-title").textContent = detail.title;
   $("#detail-body").innerHTML = detailRows(detail.rows);
@@ -1311,10 +1351,19 @@ $("#invite-supplier-form").addEventListener("submit", async (event) => {
 
 function showView(viewId) {
   const views = $$(".view");
-  const selected = views.find((view) => view.id === viewId) ?? views[0];
+  const permitted = views.filter((view) => canRead(view.id));
+  const selected = permitted.find((view) => view.id === viewId) ?? permitted[0];
   views.forEach((view) => view.classList.toggle("active", view === selected));
-  $$(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.view === selected.id));
-  pageTitle.textContent = translate(state.language, selected.dataset.titleKey);
+  $$(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.view === selected?.id));
+  pageTitle.textContent = selected ? translate(state.language, selected.dataset.titleKey) : t("prod.access.denied");
+}
+
+function applyAccessVisibility() {
+  $$("[data-view], [data-goto]").forEach((element) => {
+    const section = element.dataset.view ?? element.dataset.goto;
+    element.hidden = !canRead(section);
+  });
+  $$(".view").forEach((view) => { view.hidden = !canRead(view.id); });
 }
 
 function goTo(viewId, scrollSelector) {
@@ -1531,4 +1580,4 @@ $("#tracehub-login-form").addEventListener("submit", async (event) => {
 setLayout(localStorage.getItem("sctracker.layout") ?? "command");
 setLanguage(state.language);
 initEditionSwitch("prod");
-loadWorkspace();
+if (!passwordRecovery.isResetting()) loadWorkspace();

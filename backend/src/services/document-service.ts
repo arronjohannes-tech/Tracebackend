@@ -8,9 +8,10 @@ import { AppError, conflict, notFound } from "../errors.js";
 import { constantTimeEqual, hashOpaqueToken } from "../security.js";
 import { createObjectStore, type ObjectStore } from "../infrastructure/object-store.js";
 import * as repository from "../repositories/document-repository.js";
+import { assertPermission, hasRole, loadPermissions } from "../permissions.js";
 export type UploadInput = { fileName: string; mimeType: string; size: number };
 function canWrite(auth: AuthContext) {
-    if (!auth.organizationId || !["org_admin", "field_agent"].includes(auth.role)) throw new AppError(403, "FORBIDDEN", "This account cannot upload documents.");
+    if (!auth.organizationId || !hasRole(auth, ["org_admin", "field_agent"])) throw new AppError(403, "FORBIDDEN", "This account cannot upload documents.");
 }
 export function uploadToken(secret: string, id: string, expiry: Date): string {
     return createHmac("sha256", secret).update("tracebackend-upload:" + id + ":" + expiry.toISOString()).digest("base64url");
@@ -38,6 +39,15 @@ export function createDocumentService(pool: Pool, config: AppConfig, store: Obje
             return withContext(pool, "system", async client => {
                 const document = await repository.byId(client, id);
                 if (!document || document.upload_expires_at.getTime() <= Date.now() || !constantTimeEqual(document.upload_token_hash, hashOpaqueToken(token))) throw new AppError(401, "INVALID_UPLOAD_TOKEN", "Upload authorization is invalid or expired.");
+                const owner = await repository.uploadOwner(client, id);
+                if (!owner) throw new AppError(401, "INVALID_UPLOAD_TOKEN", "Upload authorization is no longer valid.");
+                const auth: AuthContext = {
+                    userId: owner.id, organizationId: owner.organization_id, role: owner.role,
+                    roles: owner.assigned_roles, tokenVersion: owner.token_version,
+                    permissions: await loadPermissions(client, owner.assigned_roles, owner.organization_id),
+                };
+                canWrite(auth);
+                assertPermission(auth, "dds", true);
                 if (bytes.length !== Number(document.byte_size)) throw new AppError(400, "SIZE_MISMATCH", "Uploaded size differs.");
                 await store.put(document.storage_key, bytes);
                 await repository.received(client, id, createHash("sha256").update(bytes).digest("hex"));
