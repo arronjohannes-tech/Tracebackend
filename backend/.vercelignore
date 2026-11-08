@@ -1,0 +1,10 @@
+.env*
+.bootstrap-admin-password
+node_modules
+dist
+.test-runtime
+storage
+test
+*.crt
+*.pem
+*.key

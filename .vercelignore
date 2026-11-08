@@ -1,0 +1,14 @@
+.env*
+**/.env*
+.neon
+.vscode
+.agents
+.claude
+**/node_modules
+**/dist
+**/.test-runtime
+**/storage
+**/.bootstrap-admin-password
+*.crt
+*.pem
+*.key

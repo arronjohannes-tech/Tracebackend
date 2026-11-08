@@ -42,7 +42,11 @@ password is stored only in the ignored local `.bootstrap-admin-password` file.
 ## Vercel deployment
 
 Configure the Vercel project with `backend` as its root directory and the Fastify
-framework preset. The production environment requires:
+framework preset. `npm run build` uses `tsconfig.build.json` to compile application
+sources only; `npm run typecheck` also checks tests, including the Windows-specific
+integration harness. Deployment ignore files exclude local environment files,
+credentials, certificates and generated artifacts from CLI uploads.
+The production environment requires:
 
 - `DATABASE_URL`: pooled Neon connection string for `sctracker_asteros`
 - `DATABASE_SSL=true`
