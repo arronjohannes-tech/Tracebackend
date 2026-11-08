@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
+import Fastify from "fastify";
 import type { Pool, PoolClient, QueryResult } from "pg";
 import { buildApp } from "../src/application.js";
 import type { AppConfig } from "../src/config.js";
 import { hashOpaqueToken } from "../src/security.js";
+import { createPasswordResetService } from "../src/services/password-reset-service.js";
 
 const userId = "c2314a55-b213-4dce-8754-f144cd93848a";
 const config: AppConfig = {
@@ -121,6 +123,38 @@ function user(overrides: Partial<TestUser> = {}): TestUser {
     ...overrides,
   };
 }
+
+test("mail rejection diagnostics classify failures without logging secrets or provider bodies", async () => {
+  const messages: string[] = [];
+  const loggerApp = Fastify({ logger: { stream: { write(message: string) { messages.push(message); } } } });
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [body, expected] of [
+      ["The private.example.com domain is not verified. token=secret-reset", "sender_domain_unverified"],
+      ["You can only send testing emails to your own email address (private@example.com)", "test_recipient_restricted"],
+      ["API key is invalid: re_secret-key", "invalid_api_key"],
+      ["Unexpected provider failure: secret-reset", "provider_rejected"],
+    ]) {
+      const fixture = fakePool([user()]);
+      globalThis.fetch = async () => new Response(body, { status: 403 });
+      const service = createPasswordResetService(fixture.pool, config, loggerApp.log);
+      await assert.rejects(service.requestReset("person@example.com"), { code: "MAIL_UNAVAILABLE" });
+      const diagnostic = JSON.parse(messages.at(-1)!);
+      assert.equal(diagnostic.mailFailure, expected);
+      assert.equal(diagnostic.providerStatus, 403);
+      assert.equal(fixture.resetTokens[0]?.consumed, true);
+    }
+    const logged = messages.join("");
+    assert.ok(!logged.includes("secret-reset"));
+    assert.ok(!logged.includes("re_secret-key"));
+    assert.ok(!logged.includes("private@example.com"));
+    assert.ok(!logged.includes("private.example.com"));
+    assert.ok(!logged.includes(config.RESEND_API_KEY!));
+  } finally {
+    globalThis.fetch = originalFetch;
+    await loggerApp.close();
+  }
+});
 
 test("forgot-password gives the same neutral response for existing and unknown accounts", async () => {
   const fixture = fakePool([user()]);

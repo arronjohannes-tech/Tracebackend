@@ -75,6 +75,9 @@ the frontend reads the token from the `reset-password` fragment route.
 `TRACEHUB_BASE_URL` must be the frontend origin that serves this page.
 Forgot-password is limited to five requests per minute per client IP and
 reset-password to ten requests per minute.
+Failed delivery logs only a classified cause and the provider HTTP status, never
+the provider response body, API key, recipient address or reset link. Check Vercel
+runtime logs for `Password reset email delivery failed` when Resend rejects mail.
 
 Vercel supplies `PORT` automatically. The server binds to all interfaces and uses
 `/tmp/sctracker-storage` when `STORAGE_DIR` is not set. Vercel's local filesystem

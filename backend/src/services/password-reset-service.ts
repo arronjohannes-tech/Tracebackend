@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import type { FastifyBaseLogger } from "fastify";
 import { z } from "zod";
 import type { AppConfig } from "../config.js";
 import { queryMany, queryOne, withContext } from "../db.js";
@@ -31,6 +32,7 @@ async function sendResetEmail(
   resendApiKey: string,
   fromEmail: string,
   frontendBaseUrl: string,
+  logger?: Pick<FastifyBaseLogger, "error">,
 ): Promise<void> {
   const resetUrl = new URL("/index-prod.html", frontendBaseUrl);
   resetUrl.hash = `reset-password?token=${encodeURIComponent(recipient.token)}`;
@@ -53,17 +55,31 @@ async function sendResetEmail(
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
+    logger?.error({ mailFailure: "network_or_timeout" }, "Password reset email delivery failed");
     throw mailUnavailable();
   }
-  if (!response.ok) throw mailUnavailable();
+  if (!response.ok) {
+    let mailFailure = "provider_rejected";
+    try {
+      const body = await response.text();
+      if (/only send testing emails/i.test(body)) mailFailure = "test_recipient_restricted";
+      else if (/domain.*not verified/i.test(body)) mailFailure = "sender_domain_unverified";
+      else if (/api key.*invalid|invalid.*api key/i.test(body)) mailFailure = "invalid_api_key";
+    } catch {
+      mailFailure = "provider_response_unreadable";
+    }
+    logger?.error({ mailFailure, providerStatus: response.status }, "Password reset email delivery failed");
+    throw mailUnavailable();
+  }
 }
 
-export function createPasswordResetService(pool: Pool, config: AppConfig) {
+export function createPasswordResetService(pool: Pool, config: AppConfig, logger?: Pick<FastifyBaseLogger, "error">) {
   return {
     async requestReset(email: string, organizationSlug?: string) {
       const resendApiKey = config.RESEND_API_KEY;
       const fromEmail = config.INVITATION_FROM_EMAIL;
       if (!resendApiKey || !fromEmail) {
+        logger?.error({ mailFailure: "configuration_missing" }, "Password reset email delivery failed");
         throw mailUnavailable();
       }
 
@@ -104,7 +120,7 @@ export function createPasswordResetService(pool: Pool, config: AppConfig) {
 
       for (const recipient of recipients) {
         try {
-          await sendResetEmail(recipient, resendApiKey, fromEmail, config.TRACEHUB_BASE_URL);
+          await sendResetEmail(recipient, resendApiKey, fromEmail, config.TRACEHUB_BASE_URL, logger);
         } catch {
           await withContext(pool, "system", (client) =>
             client.query(
