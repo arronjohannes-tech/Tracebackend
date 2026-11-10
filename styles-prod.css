@@ -3181,4 +3181,13 @@ td small.plot-updated {
 .access-form { display: grid; gap: 1rem; min-width: min(28rem, 80vw); }
 .access-check { display: flex; align-items: center; gap: .4rem; white-space: nowrap; margin-block: .4rem; }
 .access-check input { width: auto; }
+.registration-management { margin-top: 1.5rem; }
+.registration-table { min-width: 70rem; }
+.registration-table td:last-child { white-space: nowrap; }
+.registration-table td:last-child button + button { margin-left: .35rem; }
+.registration-pagination { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: 1rem; }
+.registration-dialog-content { min-width: min(42rem, 82vw); }
+.registration-dialog-content .detail-list { margin-bottom: 1.25rem; }
+.registration-dialog-content .access-form { margin-top: 1rem; }
+.registration-dialog-content .access-form[hidden] { display: none; }
 [hidden] { display: none !important; }

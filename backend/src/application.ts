@@ -19,6 +19,7 @@ import { registerShipmentRoutes } from "./controllers/shipment-controller.js";
 import { registerCopernicusRoutes } from "./controllers/copernicus-controller.js";
 import { registerPlotRoutes } from "./controllers/plot-controller.js";
 import { registerRoleRoutes } from "./controllers/role-controller.js";
+import { registerRegistrationRoutes } from "./controllers/registration-controller.js";
 
 export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyInstance> {
   const app = Fastify({
@@ -109,6 +110,7 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   await registerPlotRoutes(app, pool, config, authenticate);
   await registerAdminRoutes(app, pool, config, authenticate);
   await registerRoleRoutes(app, pool, authenticate);
+  await registerRegistrationRoutes(app, pool, config, authenticate);
   await registerCopernicusRoutes(app, pool, config, authenticate);
   await registerSyncRoutes(app, pool, authenticate);
   await registerSupplierInvitationRoutes(app, pool, config, authenticate);

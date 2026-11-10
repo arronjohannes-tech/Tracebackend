@@ -42,7 +42,10 @@ for (const page of ["index-demo.html", "index-prod.html"]) {
 }
 
 test("all translation keys used by the production script exist", async () => {
-  const script = (await Promise.all(["../app-prod.js", "../src/access-management.mjs", "../src/password-recovery.mjs"]
+  const script = (await Promise.all([
+    "../app-prod.js", "../src/access-management.mjs", "../src/password-recovery.mjs",
+    "../src/registration-management.mjs",
+  ]
     .map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
   const keys = [
     ...[...script.matchAll(/\bt\(\s*"([\w.]+)"/g)].map((match) => match[1]),
@@ -64,6 +67,14 @@ test("all translation keys used by the production script exist", async () => {
     ...["mock", "notConfigured", "failed", "running", "completed", "noResult"].map((outcome) => `prod.sat.${outcome}`),
     ...["overview", "suppliers", "plots", "shipments", "risk", "dds", "guide", "users", "roles"]
       .map((section) => `prod.access.section.${section}`),
+    ...[
+      "eyebrow", "title", "reload", "search", "all", "pending", "approved", "active", "disabled",
+      "phone", "organization", "delivery", "created", "approvedAt", "activatedAt", "userId",
+      "details", "approve", "reactivate", "resend", "deactivate", "chooseOrganization", "assignmentPreserved", "previous", "next",
+      "page", "empty", "loading", "working", "saved", "refreshFailed", "listRefreshFailed",
+    ].map((key) => `prod.registration.${key}`),
+    ...["not_sent", "sent", "failed"].map((status) => `prod.registration.delivery.${status}`),
+    ...["approve", "resend", "deactivate"].map((action) => `prod.registration.confirm.${action}`),
   ];
 
   assert.ok(keys.length > 40);

@@ -198,6 +198,7 @@ export async function login(
   password: string,
   organizationSlug?: string,
 ): Promise<AuthSession> {
+  const generation = sessionGeneration;
   const payload = await request<AuthPayload>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({
@@ -206,9 +207,31 @@ export async function login(
       ...(organizationSlug ? { organizationSlug } : {}),
     }),
   }, false);
+  if (generation !== sessionGeneration) {
+    throw new ApiError("AUTH_SCOPE_CHANGED", "The session changed during login.", 409);
+  }
   const session = toSession(payload);
   await updateSession(session);
   return session;
+}
+
+export function registerAccount(input: {
+  displayName: string;
+  email: string;
+  phoneCountry: string;
+  phoneNumber: string;
+}): Promise<{ message: string }> {
+  return request("/api/v1/auth/registrations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, false);
+}
+
+export function activateAccount(token: string, password: string): Promise<{ message: string; email: string }> {
+  return request("/api/v1/auth/activate", {
+    method: "POST",
+    body: JSON.stringify({ token, password }),
+  }, false);
 }
 
 export async function refreshSession(): Promise<AuthSession> {

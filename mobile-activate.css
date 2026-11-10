@@ -1,0 +1,82 @@
+:root {
+  color-scheme: light;
+  --ink: #2c3b34;
+  --muted: #68766f;
+  --paper: #f6f4ef;
+  --panel: #fffefb;
+  --forest: #356b56;
+  --lime: #cede8f;
+  --red: #9c3d35;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  display: grid;
+  min-height: 100vh;
+  margin: 0;
+  padding: 1.25rem;
+  place-items: center;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: Inter, "Noto Sans Ethiopic", "Segoe UI", system-ui, sans-serif;
+}
+
+.activation-card {
+  width: min(100%, 34rem);
+  padding: clamp(1.5rem, 7vw, 3rem);
+  border: 1px solid #e1e2dc;
+  border-radius: 1.25rem;
+  background: var(--panel);
+  box-shadow: 0 14px 40px rgba(56, 74, 64, 0.08);
+}
+
+.brand-mark {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1.5rem;
+  place-items: center;
+  border-radius: 0.9rem;
+  color: var(--ink);
+  background: var(--lime);
+  font-weight: 800;
+}
+
+.eyebrow {
+  color: var(--forest);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-family: Georgia, serif;
+  font-size: clamp(1.8rem, 8vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+p { line-height: 1.65; }
+
+.activation-button {
+  display: block;
+  margin: 1.5rem 0;
+  padding: 0.9rem 1.2rem;
+  border-radius: 0.65rem;
+  color: white;
+  background: var(--forest);
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.activation-button:hover,
+.activation-button:focus-visible { background: #28523f; }
+
+.activation-help,
+.activation-privacy { color: var(--muted); font-size: 0.92rem; }
+.activation-error { color: var(--red); }
+
+[hidden] { display: none !important; }

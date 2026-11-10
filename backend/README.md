@@ -77,7 +77,36 @@ Forgot-password is limited to five requests per minute per client IP and
 reset-password to ten requests per minute.
 Failed delivery logs only a classified cause and the provider HTTP status, never
 the provider response body, API key, recipient address or reset link. Check Vercel
-runtime logs for `Password reset email delivery failed` when Resend rejects mail.
+runtime logs for `Account email delivery failed` when Resend rejects mail
+(`Password reset email delivery failed` identifies missing reset configuration).
+
+### Mobile registration and first password
+
+Migration `012_mobile_registration.sql` adds the system-only, forced-RLS
+registration inbox and optional phone fields on users. Existing accounts remain
+unchanged. Public `POST /api/v1/auth/registrations` accepts `displayName`, `email`,
+`phoneCountry` (ISO country code) and `phoneNumber`, validates international phone
+metadata, and returns a neutral 202 response for new, duplicate and existing
+accounts. Repeated submissions never replace contact details or security state.
+The phone number is normalized to E.164, not verified by SMS.
+
+Only system administrators can list or inspect `/api/v1/admin/registrations`,
+or call its `/:id/approve`, `/:id/resend` and `/:id/deactivate` actions.
+Approval assigns an active organization and managed roles; it does not create
+a usable account. Activation emails use the configured Resend sender and
+`TRACEHUB_BASE_URL/mobile-activate.html#token=...`. Tokens are hashed, expire in
+24 hours, are replaced on resend, and are invalidated on failed delivery or
+deactivation. Mail acceptance is not a guarantee of inbox delivery.
+
+`POST /api/v1/auth/activate` accepts `token` and `password` (12–1024 characters).
+It locks and checks the approved registration, creates the user, and consumes
+the token in one transaction. It returns an email for regular login, not a
+session. Deactivation revokes sessions, uploads and reset links. Reactivating
+an existing non-deleted account preserves its password and existing roles.
+Existing self-access and last-active-admin guards apply.
+
+See [registration activation](../docs/registration-activation.md) for native
+builds, HTTPS association requirements and the explicit app-opening fallback.
 
 Vercel supplies `PORT` automatically. The server binds to all interfaces and uses
 `/tmp/sctracker-storage` when `STORAGE_DIR` is not set. Vercel's local filesystem

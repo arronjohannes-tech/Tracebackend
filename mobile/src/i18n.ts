@@ -16,6 +16,24 @@ export type Translation = {
     signIn: string;
     signOut: string;
     selectOrganization: string;
+    register: string;
+    phone: string;
+    country: string;
+    searchCountry: string;
+    invalidRegistration: string;
+    pendingApproval: string;
+    requestFailed: string;
+    backToLogin: string;
+    activate: string;
+    activationIntro: string;
+    confirmPassword: string;
+    passwordHint: string;
+    passwordMismatch: string;
+    invalidActivation: string;
+    activationFailed: string;
+    activationLoginFailed: string;
+    clearingSession: string;
+    sessionClearFailed: string;
   };
   tabs: { home: string; suppliers: string; plots: string; operations: string; help: string };
   common: {
@@ -154,6 +172,20 @@ export const translations = {
       title: "Anmelden", email: "E-Mail", password: "Passwort",
       organizationSlug: "Organisationskürzel (optional)", signIn: "Anmelden",
       signOut: "Abmelden", selectOrganization: "Organisation auswählen",
+      register: "Registrierung anfragen", phone: "Telefonnummer", country: "Land",
+      searchCountry: "Land oder Vorwahl suchen",
+      invalidRegistration: "Bitte Name, gültige E-Mail und eine gültige Telefonnummer für das gewählte Land eingeben.",
+      pendingApproval: "Vielen Dank. Falls die Anfrage berücksichtigt werden kann, wird sie geprüft. Nach Freigabe erhalten Sie eine E-Mail mit den nächsten Schritten.",
+      requestFailed: "Die Anfrage konnte nicht gesendet werden. Bitte Verbindung prüfen und erneut versuchen.",
+      backToLogin: "Zur Anmeldung", activate: "Passwort festlegen und anmelden",
+      activationIntro: "Legen Sie Ihr erstes Passwort fest. Anschließend werden Sie angemeldet.",
+      confirmPassword: "Passwort bestätigen", passwordHint: "Mindestens 12 Zeichen. Die Passwortregeln des Servers gelten zusätzlich.",
+      passwordMismatch: "Bitte mindestens 12 Zeichen eingeben und das Passwort identisch bestätigen.",
+      invalidActivation: "Dieser Aktivierungslink ist ungültig oder abgelaufen. Bitte einen neuen Link beim Administrator anfordern.",
+      activationFailed: "Aktivierung nicht abgeschlossen. Verbindung und Passwortregeln prüfen und erneut versuchen. Bei abgelaufenem Link den Administrator kontaktieren.",
+      activationLoginFailed: "Das Passwort wurde gespeichert, aber die Anmeldung ist fehlgeschlagen. Bitte mit Ihrer E-Mail und dem neuen Passwort anmelden.",
+      clearingSession: "Vorherige Sitzung wird sicher entfernt …",
+      sessionClearFailed: "Die vorherige Sitzung konnte nicht sicher entfernt werden. Bitte lokalen App-Speicher löschen und den Link erneut öffnen.",
     },
     tabs: { home: "Start", suppliers: "Partner", plots: "Plots", operations: "Vorgänge", help: "Hilfe" },
     common: {
@@ -239,6 +271,20 @@ export const translations = {
       title: "Sign in", email: "Email", password: "Password",
       organizationSlug: "Organization slug (optional)", signIn: "Sign in",
       signOut: "Sign out", selectOrganization: "Select organization",
+      register: "Request registration", phone: "Phone number", country: "Country",
+      searchCountry: "Search country or calling code",
+      invalidRegistration: "Enter your name, a valid email and a valid phone number for the selected country.",
+      pendingApproval: "Thank you. If the request is eligible, it will be reviewed. After approval, an email will explain the next steps.",
+      requestFailed: "The request could not be sent. Check your connection and try again.",
+      backToLogin: "Back to sign in", activate: "Set password and sign in",
+      activationIntro: "Set your initial password. You will then be signed in.",
+      confirmPassword: "Confirm password", passwordHint: "At least 12 characters. Server password rules also apply.",
+      passwordMismatch: "Enter at least 12 characters and an identical password confirmation.",
+      invalidActivation: "This activation link is invalid or expired. Ask your administrator for a new link.",
+      activationFailed: "Activation was not completed. Check your connection and password rules, then retry. Contact your administrator if the link expired.",
+      activationLoginFailed: "Your password was saved, but sign-in failed. Sign in with your email and new password.",
+      clearingSession: "Securely removing the previous session …",
+      sessionClearFailed: "The previous session could not be safely removed. Clear local app storage and reopen the link.",
     },
     tabs: { home: "Home", suppliers: "Partners", plots: "Plots", operations: "Operations", help: "Help" },
     common: {
@@ -322,6 +368,20 @@ export const translations = {
       title: "ይግቡ", email: "ኢሜይል", password: "የይለፍ ቃል",
       organizationSlug: "የድርጅት አጭር መለያ (አማራጭ)", signIn: "ይግቡ",
       signOut: "ውጣ", selectOrganization: "ድርጅት ይምረጡ",
+      register: "የምዝገባ ጥያቄ ያስገቡ", phone: "ስልክ ቁጥር", country: "አገር",
+      searchCountry: "አገር ወይም የመደወያ ኮድ ይፈልጉ",
+      invalidRegistration: "ስምዎን፣ ትክክለኛ ኢሜይል እና ለተመረጠው አገር ትክክለኛ ስልክ ቁጥር ያስገቡ።",
+      pendingApproval: "እናመሰግናለን። ጥያቄው ብቁ ከሆነ ይገመገማል። ከጸደቀ በኋላ የሚቀጥሉት እርምጃዎች በኢሜይል ይላካሉ።",
+      requestFailed: "ጥያቄው አልተላከም። ግንኙነትዎን ያረጋግጡ እና እንደገና ይሞክሩ።",
+      backToLogin: "ወደ መግቢያ ተመለስ", activate: "የይለፍ ቃል ያዘጋጁ እና ይግቡ",
+      activationIntro: "የመጀመሪያ የይለፍ ቃልዎን ያዘጋጁ። ከዚያ ወደ መለያዎ ይገባሉ።",
+      confirmPassword: "የይለፍ ቃል ያረጋግጡ", passwordHint: "ቢያንስ 12 ቁምፊዎች። የሰርቨሩ የይለፍ ቃል ደንቦችም ተፈጻሚ ናቸው።",
+      passwordMismatch: "ቢያንስ 12 ቁምፊዎች እና ተመሳሳይ ማረጋገጫ ያስገቡ።",
+      invalidActivation: "የማግበሪያ አገናኙ ልክ አይደለም ወይም ጊዜው አልፏል። አዲስ አገናኝ ከአስተዳዳሪዎ ይጠይቁ።",
+      activationFailed: "ማግበሩ አልተጠናቀቀም። ግንኙነትና የይለፍ ቃል ደንቦችን ያረጋግጡ። አገናኙ ካለፈ አስተዳዳሪዎን ያነጋግሩ።",
+      activationLoginFailed: "የይለፍ ቃልዎ ተቀምጧል፣ ግን መግባት አልተሳካም። በኢሜይልዎ እና በአዲሱ የይለፍ ቃል ይግቡ።",
+      clearingSession: "የቀድሞው ክፍለ ጊዜ በደህንነት እየተወገደ ነው …",
+      sessionClearFailed: "የቀድሞው ክፍለ ጊዜ አልተወገደም። የመተግበሪያውን አካባቢያዊ ማከማቻ ያጽዱ እና አገናኙን እንደገና ይክፈቱ።",
     },
     tabs: { home: "መነሻ", suppliers: "አጋሮች", plots: "መሬቶች", operations: "ሂደቶች", help: "እገዛ" },
     common: {
@@ -406,6 +466,20 @@ export const translations = {
       title: "እቶ", email: "ኢመይል", password: "መሕለፊ ቃል",
       organizationSlug: "ሓጺር መለለዪ ትካል (ኣማራጺ)", signIn: "እቶ",
       signOut: "ውጻእ", selectOrganization: "ትካል ምረጽ",
+      register: "ምዝገባ ሕተት", phone: "ቁጽሪ ስልኪ", country: "ሃገር",
+      searchCountry: "ሃገር ወይ ኮድ ስልኪ ድለ",
+      invalidRegistration: "ስም፣ ቅኑዕ ኢመይልን ናይታ ዝተመርጸት ሃገር ቅኑዕ ቁጽሪ ስልክን ኣእቱ።",
+      pendingApproval: "የቐንየልና። እቲ ሕቶ ብቑዕ እንተኾይኑ ክግምገም እዩ። ምስ ጸደቐ ዝቕጽሉ ስጉምትታት ብኢመይል ክለኣኹ እዮም።",
+      requestFailed: "ሕቶ ኣይተላእከን። ምትእስሳርካ ኣረጋግጽ እሞ ደጊምካ ፈትን።",
+      backToLogin: "ናብ መእተዊ ተመለስ", activate: "መሕለፊ ቃል ኣዳሉ እሞ እቶ",
+      activationIntro: "ናይ መጀመርታ መሕለፊ ቃልካ ኣዳሉ። ድሕሪኡ ክትኣቱ ኢኻ።",
+      confirmPassword: "መሕለፊ ቃል ኣረጋግጽ", passwordHint: "ብውሑዱ 12 ፊደላት። ሕግታት መሕለፊ ቃል ሰርቨር እውን ይምልከቱ።",
+      passwordMismatch: "ብውሑዱ 12 ፊደላትን ተመሳሳሊ መረጋገጺን ኣእቱ።",
+      invalidActivation: "እዚ መጋበሪ መላግቦ ቅኑዕ ኣይኮነን ወይ ግዜኡ ሓሊፉ። ካብ ኣመሓዳሪኻ ሓድሽ መላግቦ ሕተት።",
+      activationFailed: "ምግባር ኣይተዛዘመን። ምትእስሳርን ሕግታት መሕለፊ ቃልን ኣረጋግጽ። ግዜኡ እንተሓሊፉ ኣመሓዳሪኻ ተወከስ።",
+      activationLoginFailed: "መሕለፊ ቃልካ ተዓቂቡ፣ ግን ምእታው ኣይተዓወተን። ብኢመይልካን ሓድሽ መሕለፊ ቃልካን እቶ።",
+      clearingSession: "ናይ ቅድሚ ሕጂ ክፍለ ግዜ ብውሑስ ይእለ ኣሎ …",
+      sessionClearFailed: "ናይ ቅድሚ ሕጂ ክፍለ ግዜ ኣይተኣልየን። ናይ ኣፕ ከባቢያዊ መኽዘን ኣጽሪ እሞ መላግቦ ደጊምካ ክፈት።",
     },
     tabs: { home: "መበገሲ", suppliers: "መሻርኽቲ", plots: "ግራውቲ", operations: "መስርሓት", help: "ሓገዝ" },
     common: {

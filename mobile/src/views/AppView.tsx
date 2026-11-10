@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -29,6 +30,7 @@ import {
   getOperation,
   getRemoteSuppliers,
   requestOperation,
+  registerAccount,
   submitDds,
   uploadDocument,
   validateDds,
@@ -57,6 +59,7 @@ import {
 } from "../i18n";
 import type { AppController } from "../controllers/useAppController";
 import PlotMapPreview from "./PlotMapPreview";
+import { normalizePhone, phoneCountries, searchPhoneCountries } from "../onboarding";
 
 const palette = {
   ink: "#14251D",
@@ -153,7 +156,7 @@ function Field({
   onChangeText: (value: string) => void;
   multiline?: boolean;
   placeholder?: string;
-  keyboardType?: "default" | "decimal-pad" | "number-pad" | "email-address";
+  keyboardType?: "default" | "decimal-pad" | "number-pad" | "email-address" | "phone-pad";
   autoCapitalize?: "none" | "sentences";
   secureTextEntry?: boolean;
 }) {
@@ -169,6 +172,7 @@ function Field({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         secureTextEntry={secureTextEntry}
+        autoCorrect={secureTextEntry || autoCapitalize === "none" ? false : undefined}
         style={[styles.input, multiline && styles.textArea]}
         accessibilityLabel={label}
       />
@@ -1422,7 +1426,155 @@ function LanguageChooser({
   );
 }
 
+function AuthLayout({ controller, children }: { controller: AppController; children: ReactNode }) {
+  const [languageOpen, setLanguageOpen] = useState(false);
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="light" />
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.authContent}>
+          <Button label={controller.t.chooseLanguage} icon="language" secondary onPress={() => setLanguageOpen(true)} />
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <LanguageChooser
+        visible={languageOpen}
+        language={controller.language}
+        t={controller.t}
+        onClose={() => setLanguageOpen(false)}
+        onSelect={(language) => {
+          void controller.setLanguage(language).catch(() => undefined);
+          setLanguageOpen(false);
+        }}
+      />
+    </SafeAreaView>
+  );
+}
+
+function RegistrationScreen({ controller, onBack }: { controller: AppController; onBack: () => void }) {
+  const { t, configured, language } = controller;
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState<ReturnType<typeof phoneCountries>[number]["code"]>("DE");
+  const [search, setSearch] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const [error, setError] = useState<"invalidRegistration" | "requestFailed" | null>(null);
+  const countries = useMemo(() => phoneCountries(language), [language]);
+  const selected = countries.find((item) => item.code === country)!;
+
+  async function submit() {
+    if (submitting.current) return;
+    const phoneNumber = normalizePhone(phone, country);
+    if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || !phoneNumber) {
+      setError("invalidRegistration");
+      return;
+    }
+    submitting.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await registerAccount({ displayName: name.trim(), email: email.trim(), phoneCountry: country, phoneNumber });
+      setName("");
+      setEmail("");
+      setPhone("");
+      setPending(true);
+    } catch {
+      setError("requestFailed");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <AuthLayout controller={controller}>
+      <View style={styles.card}>
+        <Text style={styles.heading}>{t.auth.register}</Text>
+        {pending ? <Text accessibilityLiveRegion="polite">{t.auth.pendingApproval}</Text> : (
+          <>
+            <Field label={t.common.name} value={name} onChangeText={setName} />
+            <Field label={t.auth.email} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+            <Text style={styles.label}>{t.auth.country}</Text>
+            <Button label={`${selected.flag} ${selected.name} (${selected.callingCode})`} icon="chevron-down" secondary
+              onPress={() => { setSearch(""); setCountryOpen(true); }} disabled={busy} />
+            <Field label={t.auth.phone} value={phone} onChangeText={setPhone} keyboardType="phone-pad"
+              autoCapitalize="none" placeholder={`${selected.callingCode} …`} />
+            {error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{t.auth[error]}</Text> : null}
+            {!configured ? <Text style={styles.errorText}>{t.sync.notConfiguredDetail}</Text> : null}
+            <Button label={busy ? `${t.auth.register} …` : t.auth.register} icon="person-add" onPress={() => void submit()} disabled={busy || !configured} />
+          </>
+        )}
+        <Button label={t.auth.backToLogin} icon="arrow-back" secondary onPress={onBack} disabled={busy} />
+      </View>
+      <Modal visible={countryOpen} transparent animationType="fade" onRequestClose={() => setCountryOpen(false)}>
+        <View style={styles.modal}>
+          <View style={[styles.dialog, { maxHeight: "85%" }]}>
+            <Field label={t.auth.searchCountry} value={search} onChangeText={setSearch} autoCapitalize="none" />
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {searchPhoneCountries(countries, search).map((item) => (
+                <Pressable key={item.code} style={styles.language} accessibilityRole="radio"
+                  accessibilityState={{ checked: country === item.code }}
+                  onPress={() => { setCountry(item.code); setCountryOpen(false); }}>
+                  <Text>{item.flag} {item.name} ({item.callingCode})</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Button label={t.close} icon="close" secondary onPress={() => setCountryOpen(false)} />
+          </View>
+        </View>
+      </Modal>
+    </AuthLayout>
+  );
+}
+
+function ActivationScreen({ controller }: { controller: AppController }) {
+  const { auth, t, configured } = controller;
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const status = auth.activation!.status;
+  const editable = status === "ready" || status === "failed";
+  const messages = {
+    clearing: t.auth.clearingSession, ready: t.auth.activationIntro,
+    invalid: t.auth.invalidActivation, failed: t.auth.activationFailed,
+    loginFailed: t.auth.activationLoginFailed, storageError: t.auth.sessionClearFailed,
+  };
+  async function submit() {
+    if (password.length < 12 || password.length > 1024 || password !== confirmation) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    try { await auth.activate(password); }
+    finally { setPassword(""); setConfirmation(""); }
+  }
+  return (
+    <AuthLayout controller={controller}>
+      <View style={styles.card}>
+        <Text style={styles.heading}>{t.auth.activate}</Text>
+        <Text accessibilityLiveRegion="polite">{messages[status]}</Text>
+        {editable ? <>
+          <Text>{t.auth.passwordHint}</Text>
+          <Field label={t.auth.password} value={password} onChangeText={setPassword} autoCapitalize="none" secureTextEntry />
+          <Field label={t.auth.confirmPassword} value={confirmation} onChangeText={setConfirmation} autoCapitalize="none" secureTextEntry />
+          {invalid ? <Text style={styles.errorText}>{t.auth.passwordMismatch}</Text> : null}
+          {!configured ? <Text style={styles.errorText}>{t.sync.notConfiguredDetail}</Text> : null}
+          <Button label={auth.busy ? `${t.auth.activate} …` : t.auth.activate} icon="key"
+            onPress={() => void submit()} disabled={auth.busy || !configured} />
+        </> : null}
+        <Button label={t.auth.backToLogin} icon="arrow-back" secondary onPress={auth.dismissActivation}
+          disabled={auth.busy || status === "clearing" || status === "storageError"} />
+      </View>
+    </AuthLayout>
+  );
+}
+
 function LoginScreen({ controller }: { controller: AppController }) {
+  const [register, setRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [organizationSlug, setOrganizationSlug] = useState("");
@@ -1440,10 +1592,9 @@ function LoginScreen({ controller }: { controller: AppController }) {
     }
   }
 
+  if (register) return <RegistrationScreen controller={controller} onBack={() => setRegister(false)} />;
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
-      <View style={styles.login}>
+    <AuthLayout controller={controller}>
         <View style={styles.loginBrand}>
           <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
           <Text style={styles.loginTitle}>SCTracker</Text>
@@ -1479,9 +1630,9 @@ function LoginScreen({ controller }: { controller: AppController }) {
             onPress={() => void submit()}
             disabled={auth.busy || !configured}
           />
+          <Button label={t.auth.register} icon="person-add" secondary onPress={() => setRegister(true)} disabled={auth.busy} />
         </View>
-      </View>
-    </SafeAreaView>
+    </AuthLayout>
   );
 }
 
@@ -1609,6 +1760,10 @@ export function AppView({ controller }: { controller: AppController }) {
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
   }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId]);
+
+  if (auth.activation) {
+    return <ActivationScreen key={auth.activation.token ?? "activation-result"} controller={controller} />;
+  }
 
   if (!auth.ready && !storageError && !auth.error) {
     return (
@@ -1765,6 +1920,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingTop: Platform.OS === "android" ? NativeStatusBar.currentHeight : 0, backgroundColor: palette.ink },
   loader: { flex: 1 },
   login: { flex: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper },
+  authContent: { flexGrow: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper },
   loginBrand: { alignItems: "center", gap: 8 },
   loginTitle: { color: palette.ink, fontSize: 28, fontWeight: "900" },
   header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 14, backgroundColor: palette.ink },

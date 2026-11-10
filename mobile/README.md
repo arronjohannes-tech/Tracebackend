@@ -61,6 +61,86 @@ Login/Refresh liefern unter `data` mindestens `accessToken`, `refreshToken`, `us
 geschützte Request erhält `Authorization: Bearer <accessToken>` und
 `X-Organization-Id: <id>`. Bei `401` wird einmalig aktualisiert und wiederholt.
 
+## Registrierung und Erstpasswort-Aktivierung
+
+Android, iOS und Web bieten Registrierung mit Name, E-Mail und Telefonnummer.
+Die durchsuchbare Länderauswahl zeigt Flagge, Namen und Vorwahl. Telefonnummern
+werden mit den vollständigen Metadaten von `libphonenumber-js/max` geprüft,
+dem gewählten Land zugeordnet und in E.164 normalisiert.
+Die Registrierung erstellt noch keine Sitzung. Die Bestätigung ist neutral,
+unabhängig davon, ob eine Adresse bereits bekannt ist; Freigabe und Rollen-/
+Organisationszuweisung erfolgen administrativ, nicht durch die registrierende Person.
+
+Zusätzliche öffentliche API-Endpunkte:
+
+- `POST /api/v1/auth/registrations` mit `{ displayName, email, phoneCountry: "DE", phoneNumber: "+49…" }`
+  (ISO-Ländercode entsprechend der Auswahl); `202` mit neutraler Nachricht im `data`-Envelope.
+- `POST /api/v1/auth/activate` mit `{ token, password }`; `200` mit
+  `data: { message, email }`, danach regulärer Login mit **dieser vom Server
+  gelieferten E-Mail** und dem neuen Passwort.
+
+Unterstützte Links (nur diese Hosts/Routen werden akzeptiert):
+
+- HTTPS: `https://tracehub-ten.vercel.app/mobile-activate.html#token=<token>`
+- nativer Fallback: `tracehub://activate?token=<token>`
+
+Native Kaltstarts verwenden `Linking.getInitialURL()`, warme Starts den
+React-Native-`Linking`-URL-Listener. Web behandelt initiale URL und
+`hashchange`/`popstate`; nach Übernahme wird der Fragment-Token aus der
+Adresszeile entfernt. Tokens und Passwörter werden nur im Arbeitsspeicher
+verarbeitet, weder gespeichert noch protokolliert. Neuladen nach Entfernung des
+Fragments erfordert erneutes Öffnen des ursprünglichen Links.
+Vor Aktivierung wird eine vorhandene Sitzung inklusive persistentem Session-Key
+entfernt; schlägt das fehl, bleibt die Aktivierung blockiert. Ein verspäteter
+Login/Refresh darf die alte Sitzung nicht wiederherstellen.
+
+Passwort und Bestätigung müssen übereinstimmen und 12 bis 1024 Zeichen enthalten.
+`INVALID_ACTIVATION_TOKEN` wird als
+ungültiger/abgelaufener Link angezeigt, mit Hinweis auf einen neuen Link vom
+Administrator. Nach erfolgreicher Aktivierung aber fehlgeschlagener Anmeldung
+kann man sich über die normale Anmeldung mit dem neuen Passwort anmelden.
+Alle neuen Hinweise folgen den bestehenden DE-/EN-/AM-/TI-Übersetzungsmustern;
+die Sprachauswahl ist auch vor der Anmeldung verfügbar.
+
+### Build-, Hosting- und Signaturvoraussetzungen für Links
+
+Diese Konfiguration ist **keine Verifikation nativer Links**. Scheme,
+Associated Domains und Android-Intent-Filter benötigen einen neuen nativen
+Development-/Release-Build; Expo Go genügt wegen eigener Schemes und des
+OCR-Moduls nicht. Das bloße JS-Exportieren signiert oder installiert keine App.
+
+- iOS: Apple-Developer-Team, signierte Provisioning-Profile mit Associated-Domains-
+  Berechtigung und tatsächliche Bundle-ID. Der Domainbetreiber muss
+  `https://tracehub-ten.vercel.app/.well-known/apple-app-site-association`
+  mit der richtigen `TEAM_ID.com.ajohannes.tracebackend`-App-ID und der Route
+  `/mobile-activate.html` bereitstellen.
+- Android: signierter Build für `com.ajohannes.tracebackend`; der Domainbetreiber
+  muss `https://tracehub-ten.vercel.app/.well-known/assetlinks.json` mit Paketname
+  und SHA-256-Fingerprints der tatsächlichen Signatur bereitstellen
+  (bei Play-Verteilung insbesondere **Play App Signing**, nicht nur Upload-Key).
+  `autoVerify: true` allein beweist keine Domainzuordnung.
+- Web: `npm run export:web` erzeugt `dist\web` einschließlich
+  `mobile-activate.html` als optionalem Einstiegspunkt derselben Expo-App.
+  Dieser Export wird aktuell **nicht** produktiv gehostet: Auf Tracehub ist
+  dieser Pfad fuer die HTTPS-Landingpage mit dem Button „App öffnen“ reserviert.
+  Eine alternative Web-App-Bereitstellung muss Hosting, vertrauenswuerdige
+  Aktivierungsroute und API-URL/CORS gemeinsam konfigurieren; keine Weiterleitung,
+  die das Fragment verliert. Ein lokaler anderer Host wird absichtlich nicht als Aktivierungslink vertraut.
+  Bestehende native-only Funktionen (OCR/GPS/Karte) erhalten dadurch keine
+  zusätzliche Web-Funktionalität.
+
+Domain-Verifikationsdateien, Hosting, Signierung, Builds auf EAS und Tests mit
+echten Geräten/Produktionskonten wurden hier nicht verändert oder durchgeführt.
+Vor Freigabe Kalt-/Warmstart, bereits angemeldete Benutzer, ungültige/verbrauchte/
+abgelaufene Links, Netzfehler sowie DE/EN/AM auf signierten Android-/iOS-Geräten
+und dem echten Web-Host prüfen. Der Scheme-Fallback kann vom Link-Absender oder
+der Hosting-Seite angeboten werden; es gibt keine automatische Weiterleitung
+zu einem frei aus URL-Parametern gewählten Ziel.
+
+Implementierungsreferenz: [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/),
+[Linking](https://docs.expo.dev/versions/v57.0.0/sdk/linking/) und
+[App-Konfiguration](https://docs.expo.dev/versions/v57.0.0/config/app/).
+
 ## Android
 
 iOS und Android nutzen dieselbe Codebasis (Expo, keine nativen Ordner im Repository); es gibt keine
@@ -111,6 +191,7 @@ npm run typecheck
 npx expo-doctor
 npm run export:android
 npm run export:ios
+npm run export:web
 ```
 
 Für signierte Builds werden weiterhin Expo Application Services sowie die jeweiligen Apple-/Google-Entwicklerkonten benötigt.

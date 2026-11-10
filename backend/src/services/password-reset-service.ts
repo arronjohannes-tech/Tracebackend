@@ -6,6 +6,7 @@ import type { AppConfig } from "../config.js";
 import { queryMany, queryOne, withContext } from "../db.js";
 import { AppError } from "../errors.js";
 import { hashOpaqueToken, hashPassword } from "../security.js";
+import { sendAccountEmail } from "./mail-service.js";
 
 const mailUnavailable = () =>
   new AppError(503, "MAIL_UNAVAILABLE", "Password reset email is temporarily unavailable. Please try again later.");
@@ -37,38 +38,12 @@ async function sendResetEmail(
   const resetUrl = new URL("/index-prod.html", frontendBaseUrl);
   resetUrl.hash = `reset-password?token=${encodeURIComponent(recipient.token)}`;
 
-  let response: Response;
   try {
-    response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": recipient.id,
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [recipient.email],
-        subject: "Password reset",
-        text: `Use this link to reset your password: ${resetUrl}\n\nThis link expires in one hour and can be used once. If you did not request a password reset, you can ignore this email.`,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+    await sendAccountEmail({ RESEND_API_KEY: resendApiKey, INVITATION_FROM_EMAIL: fromEmail }, {
+      id: recipient.id, to: recipient.email, subject: "Password reset",
+      text: `Use this link to reset your password: ${resetUrl}\n\nThis link expires in one hour and can be used once. If you did not request a password reset, you can ignore this email.`,
+    }, logger);
   } catch {
-    logger?.error({ mailFailure: "network_or_timeout" }, "Password reset email delivery failed");
-    throw mailUnavailable();
-  }
-  if (!response.ok) {
-    let mailFailure = "provider_rejected";
-    try {
-      const body = await response.text();
-      if (/only send testing emails/i.test(body)) mailFailure = "test_recipient_restricted";
-      else if (/domain.*not verified/i.test(body)) mailFailure = "sender_domain_unverified";
-      else if (/api key.*invalid|invalid.*api key/i.test(body)) mailFailure = "invalid_api_key";
-    } catch {
-      mailFailure = "provider_response_unreadable";
-    }
-    logger?.error({ mailFailure, providerStatus: response.status }, "Password reset email delivery failed");
     throw mailUnavailable();
   }
 }

@@ -3,14 +3,15 @@ import {
   SUPPORTED_LANGUAGES,
   applyTranslations,
   translate,
-} from "./src/i18n.mjs?v=1";
-import { format } from "./src/i18n-prod.mjs?v=1";
+} from "./src/i18n.mjs?v=2";
+import { format } from "./src/i18n-prod.mjs?v=2";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
   buildMapSvg, groupOptions, plotTone, plotsInGroup, plotsForPolygonView,
 } from "./src/plot-map.mjs?v=1";
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 import { initAccessManagement } from "./src/access-management.mjs?v=1";
+import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
 import { initPasswordRecovery } from "./src/password-recovery.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
@@ -146,10 +147,12 @@ function refreshSession() {
   return refreshing;
 }
 
-async function api(path, { method = "GET", body, headers = {}, responseType = "json" } = {}) {
+async function api(path, {
+  method = "GET", body, headers = {}, responseType = "json", organizationScoped = true,
+} = {}) {
   const url = new URL(path, location.origin);
-  // System administrators are not bound to one organization and must name it explicitly.
-  if (state.organizationId && state.user?.role === "system_admin") {
+  // Most system-admin requests are organization-scoped; global admin views opt out.
+  if (organizationScoped && state.organizationId && state.user?.role === "system_admin") {
     url.searchParams.set("organizationId", state.organizationId);
   }
   const send = () => fetch(url.pathname + url.search, {
@@ -204,6 +207,10 @@ const accessManagement = initAccessManagement({
     setAuthMessage(t("prod.access.signInAgain"));
   },
 });
+const registrationManagement = initRegistrationManagement({
+  api, t, labelFor, escapeHtml, formatDateTime, currentUser: () => state.user,
+  refresh: refreshWorkspace,
+});
 const passwordRecovery = initPasswordRecovery({ t, onReset: showLogin });
 
 function showToast(text, duration = 3200) {
@@ -221,6 +228,7 @@ function showApp() {
 }
 
 function showLogin() {
+  registrationManagement.invalidate();
   accessManagement.clear();
   state.dashboard = null;
   state.organization = null;
@@ -291,6 +299,7 @@ async function loadWorkspace() {
     sessionStorage.setItem("user", JSON.stringify(state.user));
     await resolveOrganization();
     await reloadData();
+    await registrationManagement.load();
     showApp();
     setAuthMessage("");
     renderAll();
@@ -307,6 +316,7 @@ async function refreshWorkspace() {
     state.user = await api("/api/v1/auth/me");
     sessionStorage.setItem("user", JSON.stringify(state.user));
     await reloadData();
+    const registrationsRefreshed = await registrationManagement.load();
     if (!canRead("plots")) {
       state.selectedPlotIds.clear();
       state.satelliteOperations.clear();
@@ -317,6 +327,7 @@ async function refreshWorkspace() {
     $$("dialog[open]").forEach((dialog) => dialog.close());
     renderAll();
     showView(location.hash.slice(1) || "overview");
+    return registrationsRefreshed;
   } catch (error) {
     if (error.status !== 401) throw error;
     sessionStorage.clear();
@@ -877,6 +888,7 @@ function renderAll() {
   renderRisk();
   renderDds();
   accessManagement.render();
+  registrationManagement.render();
   applyTranslations(document, state.language);
   applyAccessVisibility();
 }
@@ -1085,10 +1097,12 @@ function openOrganization() {
         <span class="badge ${member.active ? "neutral" : "danger"}">${escapeHtml(labelFor("prod.role", member.role))}</span></li>`).join("")}</ul>` : ""}
     ${switcher}`;
   $("#org-switch")?.addEventListener("change", async (event) => {
+    registrationManagement.invalidate();
     state.organizationId = event.target.value;
     sessionStorage.setItem("selectedOrganizationId", state.organizationId);
     try {
       await reloadData();
+      await registrationManagement.load();
       renderAll();
       $("#org-dialog").close();
     } catch (error) {
@@ -1404,6 +1418,7 @@ function closeAccountMenu() {
 }
 
 async function logout() {
+  registrationManagement.invalidate();
   const refreshToken = sessionStorage.getItem("refreshToken");
   let serverLogoutFailed = false;
   if (refreshToken) {

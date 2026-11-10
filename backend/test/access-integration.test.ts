@@ -15,6 +15,7 @@ import { createPasswordResetService } from "../src/services/password-reset-servi
 import { createRoleManagementService, matrixSchema } from "../src/services/role-management-service.js";
 import { createUserManagementService, createUserSchema, updateUserSchema } from "../src/services/user-management-service.js";
 import { roles, type AuthContext } from "../src/types.js";
+import { createRegistrationService, registrationSchema, registrationListSchema, registrationApprovalSchema } from "../src/services/registration-service.js";
 
 test("user lifecycle, role isolation and reset tokens work with real PostgreSQL", { skip: process.platform !== "win32", timeout: 300_000 }, async (t) => {
   const { initdb, postgres, pg_ctl } = await import("@embedded-postgres/windows-x64");
@@ -75,7 +76,7 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
     await db.query(`INSERT INTO users(id,organization_id,email,display_name,password_hash,role)
       VALUES($1,$2,'admin@example.com','Admin',$3,'org_admin'),($4,$2,'legacy@example.com','Legacy',$3,'auditor')`,
     [adminId, org, passwordHash, legacyId]);
-    for (const migration of ["010_user_permissions.sql", "011_password_reset.sql"]) {
+    for (const migration of ["010_user_permissions.sql", "011_password_reset.sql", "012_mobile_registration.sql"]) {
       await db.query(await readFile(new URL("../migrations/" + migration, import.meta.url), "utf8"));
     }
     await db.query("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO test_app; GRANT USAGE ON SCHEMA public TO test_app");
@@ -190,6 +191,87 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
         assert.equal(result.filter((item) => item.status === "fulfilled").length, 1);
         assert.equal(await verifyPassword((await db.query("SELECT password_hash FROM users WHERE id=$1", [legacyId])).rows[0].password_hash, "changed-test-password"), true);
         await assert.rejects(reset.resetPassword(token, "another-test-password"), /invalid or expired/);
+      } finally { globalThis.fetch = originalFetch; }
+    });
+    await t.test("mobile registrations require approval and a single-use password activation, with revocation and RLS", async () => {
+      const originalFetch = globalThis.fetch;
+      const registration = createRegistrationService(pool!, config);
+      let token = "";
+      let rejectMail = false;
+      globalThis.fetch = async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        const url = new URL(body.text.split("\n").find((line: string) => line.startsWith("http")));
+        assert.equal(url.pathname, "/mobile-activate.html");
+        token = new URLSearchParams(url.hash.slice(1)).get("token")!;
+        return new Response(null, { status: rejectMail ? 403 : 200 });
+      };
+      try {
+        const input = registrationSchema.parse({
+          displayName: "Mobile Person", email: "MOBILE@example.com", phoneCountry: "DE", phoneNumber: "01512 3456789",
+        });
+        assert.equal(input.phoneNumber, "+4915123456789");
+        await registration.register(input);
+        const duplicate = await registration.register({ ...input, displayName: "Do not replace" });
+        assert.match(duplicate.message, /reviewed/);
+        const listing = await registration.list(system, registrationListSchema.parse({ search: "mobile@" }));
+        assert.equal(listing.total, 1);
+        const id = String(listing.items[0]!.id);
+        assert.equal(listing.items[0]!.displayName, "Mobile Person");
+        assert.equal((await db.query("SELECT count(*)::int AS n FROM users WHERE email=$1", [input.email])).rows[0].n, 0);
+        assert.equal((await withContext(pool!, admin, (client) => client.query("SELECT * FROM mobile_registrations"))).rowCount, 0);
+        assert.equal((await app.inject({ method: "GET", url: "/api/v1/admin/registrations" })).statusCode, 401);
+        const adminRequest = await request(admin, "/api/v1/admin/registrations");
+        assert.equal(adminRequest.statusCode, 403);
+        assert.equal((await app.inject({ method: "POST", url: "/api/v1/auth/registrations",
+          payload: { ...input, roles: ["system_admin"] } })).statusCode, 400);
+        await assert.rejects(registration.activate("x".repeat(43), "registration-password", audit), /invalid or expired/);
+        await registration.approve(system, audit, id, { organizationId: org, roles: ["field_agent"] });
+        assert.equal((await db.query("SELECT count(*)::int AS n FROM users WHERE email=$1", [input.email])).rows[0].n, 0);
+        const firstToken = token;
+        await registration.resend(system, audit, id);
+        assert.notEqual(token, firstToken);
+        await assert.rejects(registration.activate(firstToken, "registration-password", audit), /invalid or expired/);
+        assert.equal("activation_token_hash" in await registration.get(system, id), false);
+        await db.query("UPDATE mobile_registrations SET activation_expires_at=now()-interval '1 second' WHERE id=$1", [id]);
+        await assert.rejects(registration.activate(token, "registration-password", audit), /invalid or expired/);
+        await registration.resend(system, audit, id);
+        const activated = await Promise.allSettled([
+          registration.activate(token, "registration-password", audit),
+          registration.activate(token, "registration-password", audit),
+        ]);
+        assert.equal(activated.filter((value) => value.status === "fulfilled").length, 1);
+        const saved = (await db.query("SELECT * FROM users WHERE email=$1", [input.email])).rows[0];
+        assert.equal(saved.active, true);
+        assert.equal(saved.phone_number, input.phoneNumber);
+        assert.equal(await verifyPassword(saved.password_hash, "registration-password"), true);
+        assert.equal((await registration.get(system, id)).status, "active");
+        await db.query("INSERT INTO refresh_tokens(id,user_id) VALUES($1,$2)", [randomUUID(), saved.id]);
+        await db.query("INSERT INTO documents(created_by,organization_id,upload_expires_at) VALUES($1,$2,now()+interval '1 hour')", [saved.id, org]);
+        await registration.deactivate(system, audit, id);
+        assert.equal((await db.query("SELECT active FROM users WHERE id=$1", [saved.id])).rows[0].active, false);
+        assert.ok((await db.query("SELECT revoked_at FROM refresh_tokens WHERE user_id=$1", [saved.id])).rows[0].revoked_at);
+        assert.equal((await registration.get(system, id)).status, "disabled");
+        await assert.rejects(registration.approve(system, audit, id, { organizationId: org, roles: ["auditor"] }), /preserves existing roles/);
+        await db.query("UPDATE organizations SET active=false WHERE id=$1", [org]);
+        await assert.rejects(registration.approve(system, audit, id, { organizationId: org, roles: ["field_agent"] }), /active organization/);
+        await db.query("UPDATE organizations SET active=true WHERE id=$1", [org]);
+        await registration.approve(system, audit, id, { organizationId: org, roles: ["field_agent"] });
+        assert.equal((await registration.get(system, id)).status, "active");
+        await users.update(system, audit, org, saved.id, { active: false }, true);
+        await assert.rejects(registration.approve(system, audit, id, { organizationId: org, roles: ["field_agent"] }), /Deleted accounts/);
+
+        await registration.register({ ...input, email: "mail-failure@example.com" });
+        const pending = await registration.list(system, registrationListSchema.parse({ search: "mail-failure@" }));
+        const failedId = String(pending.items[0]!.id);
+        rejectMail = true;
+        await assert.rejects(registration.approve(system, audit, failedId, { organizationId: org, roles: ["auditor"] }), { code: "MAIL_UNAVAILABLE" });
+        assert.equal((await registration.get(system, failedId)).deliveryStatus, "failed");
+        await assert.rejects(registration.activate(token, "registration-password", audit), /invalid or expired/);
+        rejectMail = false;
+        await registration.resend(system, audit, failedId);
+        await registration.deactivate(system, audit, failedId);
+        await assert.rejects(registration.activate(token, "registration-password", audit), /invalid or expired/);
+        assert.equal(registrationApprovalSchema.safeParse({ organizationId: org, roles: ["system_admin"] }).success, false);
       } finally { globalThis.fetch = originalFetch; }
     });
     await app.close();

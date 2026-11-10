@@ -6,6 +6,7 @@ Eigenständige Kopie von Asteros mit überarbeiteten mobilen Backend-Abläufen.
 - [Web-Anwendung](docs/download/Anwendung-Web.html)
 - [Mobile Anwendung](docs/download/Anwendung-Mobile.html)
 - [Aktueller Testbericht](docs/download/Testbericht.html)
+- [Registrierungsfreigabe und mobile Aktivierung](docs/registration-activation.md)
 
 Backend: `backend/`; Web-Administration: `admin/`; mobile App: `mobile/`.
 Tracehub (Web-Oberfläche im Projektstamm) hat zwei Ansichten, zwischen denen im Kopfbereich gewechselt wird:
