@@ -10,6 +10,7 @@ const supplierPayload = z.object({
 const plotPayload = z.object({
   id: z.string().uuid(),
   supplierId: z.string().uuid().optional(),
+  shipmentId: z.string().uuid().optional(),
   documentId: z.string().uuid().optional(),
   producer: z.string().trim().min(1).max(200),
   farmName: z.string().trim().min(1).max(200),

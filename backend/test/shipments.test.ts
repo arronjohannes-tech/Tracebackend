@@ -47,7 +47,11 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function fakePool(role: Role, calls: Array<{ text: string; values: unknown[] }>): Pool {
+function fakePool(
+  role: Role,
+  calls: Array<{ text: string; values: unknown[] }>,
+  linkedPlot = false,
+): Pool {
   const client = {
     async query(text: string, values: unknown[] = []): Promise<QueryResult> {
       calls.push({ text, values });
@@ -63,6 +67,12 @@ function fakePool(role: Role, calls: Array<{ text: string; values: unknown[] }>)
       if (text.includes("INSERT INTO shipments")) return { rows: [{ id: shipmentId }], rowCount: 1 } as QueryResult;
       if (text.includes("UPDATE shipments")) return { rows: [{ id: shipmentId }], rowCount: 1 } as QueryResult;
       if (text.includes("DELETE FROM shipments")) return { rows: [{ id: shipmentId }], rowCount: 1 } as QueryResult;
+      if (text.includes("FROM shipments WHERE organization_id")) {
+        return { rows: [{ id: shipmentId }], rowCount: 1 } as QueryResult;
+      }
+      if (text.includes("FROM plots")) {
+        return { rows: linkedPlot ? [{ id: "plot-id" }] : [], rowCount: linkedPlot ? 1 : 0 } as QueryResult;
+      }
       if (text.includes("FROM shipments s")) {
         const wantsUpdate = calls.some((call) => call.text.includes("UPDATE shipments"));
         return {
@@ -80,9 +90,10 @@ function fakePool(role: Role, calls: Array<{ text: string; values: unknown[] }>)
 async function request(
   role: Role,
   options: { method: "GET" | "POST" | "PATCH" | "DELETE"; url: string; payload?: unknown },
+  linkedPlot = false,
 ) {
   const calls: Array<{ text: string; values: unknown[] }> = [];
-  const app = await buildApp(config, fakePool(role, calls));
+  const app = await buildApp(config, fakePool(role, calls, linkedPlot));
   const accessToken = await signAccessToken(config, {
     userId,
     organizationId: role === "system_admin" ? null : organizationId,
@@ -152,6 +163,16 @@ test("shipments can be updated partially and merge existing values", async () =>
   assert.equal(update.values[10], "arrived");
   const empty = await request("reviewer", { method: "PATCH", url: `/api/v1/shipments/${shipmentId}`, payload: {} });
   assert.equal(empty.response.statusCode, 400);
+});
+
+test("a shipment linked to a plot cannot be changed to a different supplier", async () => {
+  const { response } = await request("reviewer", {
+    method: "PATCH",
+    url: `/api/v1/shipments/${shipmentId}`,
+    payload: { supplierId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+  }, true);
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.json().error.code, "SHIPMENT_SUPPLIER_MISMATCH");
 });
 
 test("only administrators may delete shipments", async () => {

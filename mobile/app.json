@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Tracebackend Mobile",
+    "name": "Tracecomplaince",
     "slug": "tracebackend-mobile",
     "scheme": "tracehub",
     "version": "0.1.0",
@@ -9,10 +9,8 @@
     "userInterfaceStyle": "light",
     "description": "Mobile coffee plot and supplier field application for SCTracker.",
     "ios": {
-      "associatedDomains": ["applinks:tracehub-ten.vercel.app"],
       "supportsTablet": true,
       "bundleIdentifier": "com.ajohannes.tracebackend",
-      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "SCTracker uses your location to capture coffee plot coordinates while you are on site."

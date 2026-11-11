@@ -45,6 +45,12 @@ the password setup screen. The landing page does not activate accounts itself.
 
 ## Native HTTPS association setup
 
+The current iOS release deliberately omits `ios.associatedDomains`: its existing
+distribution profile does not include that entitlement. Activation uses the
+explicit landing-page button and the registered `tracehub://` scheme instead.
+Enable Associated Domains only together with a matching provisioning profile
+and a verified association document.
+
 Do not publish placeholder association documents. Before enabling verified
 HTTPS app links, obtain the production iOS Team ID and bundle identifier, plus
 the Android application ID and signing-certificate SHA-256 fingerprint from

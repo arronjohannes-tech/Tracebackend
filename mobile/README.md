@@ -5,6 +5,7 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 ## Funktionen
 
 - Offline-fähige Lieferanten- und Kaffee-Plot-Erfassung
+- Sendungsverwaltung im Partnerbereich und dauerhafte Sendungszuordnung zu Plots; beim Auswählen einer Sendung wird deren Lieferant übernommen, die Sendungsdaten bleiben in der Plotansicht separat sichtbar
 - E-Mail-/Passwort-Login mit kurzlebigem Access Token, Refresh Token und Organisationsauswahl; Session verschlüsselt in Expo SecureStore
 - echte GeoJSON-Polygone durch mehrere GPS-Punkte sowie JSON-Import und -Bearbeitung, inklusive Bereichs-, Flächen- und Selbstüberschneidungsprüfung
 - GPS-Grenzbegehung mit zeitgestempelten Messpunkten, Genauigkeitswerten, Rücknahme, Polygonabschluss und nativer Kartenansicht; GPS-Aufzeichnungen sind Messdaten und werden nicht automatisch als rechtliche Grenze bestätigt
@@ -48,6 +49,7 @@ Verwendete Endpunkte:
 - `GET /api/v1/geofences`
 - `POST /api/v1/sync/push`
 - `GET /api/v1/sync/pull?cursor=...`
+- `GET|POST /api/v1/shipments`, `GET|PATCH|DELETE /api/v1/shipments/:id`
 - `POST /api/v1/documents/uploads`
 - `POST /api/v1/documents/uploads/:id/complete`
 - `POST|GET /api/v1/satellite/analyses[/:id]`
@@ -105,10 +107,13 @@ die Sprachauswahl ist auch vor der Anmeldung verfügbar.
 ### Build-, Hosting- und Signaturvoraussetzungen für Links
 
 Diese Konfiguration ist **keine Verifikation nativer Links**. Scheme,
-Associated Domains und Android-Intent-Filter benötigen einen neuen nativen
+Associated Domains und Android-Intent-Filter benoetigen einen neuen nativen
 Development-/Release-Build; Expo Go genügt wegen eigener Schemes und des
 OCR-Moduls nicht. Das bloße JS-Exportieren signiert oder installiert keine App.
 
+- Der aktuelle iOS-Build verwendet bewusst nur den `tracehub://`-Scheme-Fallback
+  der HTTPS-Landingpage. `ios.associatedDomains` bleibt deaktiviert, bis sowohl
+  ein passendes Provisioning-Profil als auch die Domainverifikation bereitstehen.
 - iOS: Apple-Developer-Team, signierte Provisioning-Profile mit Associated-Domains-
   Berechtigung und tatsächliche Bundle-ID. Der Domainbetreiber muss
   `https://tracehub-ten.vercel.app/.well-known/apple-app-site-association`
@@ -129,8 +134,8 @@ OCR-Moduls nicht. Das bloße JS-Exportieren signiert oder installiert keine App.
   Bestehende native-only Funktionen (OCR/GPS/Karte) erhalten dadurch keine
   zusätzliche Web-Funktionalität.
 
-Domain-Verifikationsdateien, Hosting, Signierung, Builds auf EAS und Tests mit
-echten Geräten/Produktionskonten wurden hier nicht verändert oder durchgeführt.
+Domain-Verifikationsdateien sind noch nicht veroeffentlicht; Tests der
+Aktivierung auf echten Geraeten stehen weiterhin aus.
 Vor Freigabe Kalt-/Warmstart, bereits angemeldete Benutzer, ungültige/verbrauchte/
 abgelaufene Links, Netzfehler sowie DE/EN/AM auf signierten Android-/iOS-Geräten
 und dem echten Web-Host prüfen. Der Scheme-Fallback kann vom Link-Absender oder
@@ -142,6 +147,13 @@ Implementierungsreferenz: [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/)
 [App-Konfiguration](https://docs.expo.dev/versions/v57.0.0/config/app/).
 
 ## Android
+
+Der Anzeigename auf Android und iOS sowie im Login lautet `Tracecomplaince`.
+Paketname, Bundle-ID, Deep-Link-Schema und EAS-Projekt bleiben unveraendert,
+damit bestehende Installationen aktualisiert werden koennen. Preview- und
+Produktionsbuilds erhoehen ihre native Buildnummer automatisch ueber EAS.
+Die `.easignore` im Repository-Root schliesst lokale Zugangsdaten, Zertifikate,
+Backend-Dateien und generierte mobile Dateien vom Build-Upload aus.
 
 iOS und Android nutzen dieselbe Codebasis (Expo, keine nativen Ordner im Repository); es gibt keine
 separate Android-Kopie. Plattformabhängig ist nur Weniges (Statusleisten-Abstand, Schriftfamilien,
@@ -208,6 +220,18 @@ npx eas build:configure
 npx eas build --platform ios --profile production
 npx eas submit --platform ios --profile production
 ```
+
+Fuer einen bestimmten neuen Build statt einer interaktiven Buildauswahl:
+
+```powershell
+eas submit --platform ios --profile production --id <EAS_BUILD_ID> --non-interactive --wait
+```
+
+Der Upload geht an die bestehende App-Store-Connect-App `6818269361`.
+Erst nach Apples Verarbeitung ist der Build in TestFlight verfuegbar;
+ein erfolgreicher EAS-Build allein bestaetigt noch keinen TestFlight-Upload.
+Der Anzeigename des installierten Builds wird durch `app.json` festgelegt.
+Der separate App-Store-Connect-Name wird dort in den App-Informationen gepflegt.
 
 Der Build erzeugt eine signierte IPA ueber EAS. Fuer `build` und `submit` werden
 Apple-Developer-/App-Store-Connect-Berechtigungen benoetigt. Die Bundle-ID ist

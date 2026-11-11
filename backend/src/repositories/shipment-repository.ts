@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { queryMany, queryOne } from "../db.js";
+import { conflict } from "../errors.js";
 
 export const shipmentStatuses = ["planned", "in_transit", "arrived", "cancelled"] as const;
 export type ShipmentStatus = (typeof shipmentStatuses)[number];
@@ -106,6 +107,19 @@ export async function updateShipment(
     id: string,
     input: ShipmentInput,
 ) {
+    const shipment = await queryOne<{ id: string }>(client,
+        "SELECT id FROM shipments WHERE organization_id = $1 AND id = $2 FOR UPDATE",
+        [organizationId, id]);
+    if (!shipment) return null;
+    const incompatiblePlot = await queryOne<{ id: string }>(client,
+        `SELECT id FROM plots
+          WHERE organization_id = $1 AND shipment_id = $2
+            AND supplier_id IS DISTINCT FROM $3
+          LIMIT 1`,
+        [organizationId, id, input.supplierId]);
+    if (incompatiblePlot) {
+        throw conflict("SHIPMENT_SUPPLIER_MISMATCH", "A shipment linked to a plot must keep the same supplier.");
+    }
     const updated = await queryOne<{ id: string }>(client,
         `UPDATE shipments
             SET reference = $3, product = $4, hs_code = $5, quantity_kg = $6, origin_country = $7,
@@ -122,6 +136,16 @@ export async function updateShipment(
 }
 
 export async function deleteShipment(client: PoolClient, organizationId: string, id: string) {
+    const shipment = await queryOne<{ id: string }>(client,
+        "SELECT id FROM shipments WHERE organization_id = $1 AND id = $2 FOR UPDATE",
+        [organizationId, id]);
+    if (!shipment) return false;
+    const linkedPlot = await queryOne<{ id: string }>(client,
+        "SELECT id FROM plots WHERE organization_id = $1 AND shipment_id = $2 LIMIT 1",
+        [organizationId, id]);
+    if (linkedPlot) {
+        throw conflict("SHIPMENT_IN_USE", "A shipment linked to a plot cannot be deleted.");
+    }
     const deleted = await queryOne<{ id: string }>(client,
         "DELETE FROM shipments WHERE organization_id = $1 AND id = $2 RETURNING id",
         [organizationId, id]);

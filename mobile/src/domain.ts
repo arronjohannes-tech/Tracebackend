@@ -14,6 +14,8 @@ export type AuthUser = {
   id: string;
   email: string;
   name?: string;
+  role?: string;
+  roles?: string[];
 };
 
 export type AuthSession = {
@@ -46,6 +48,7 @@ export type Plot = {
   revision?: number;
   id: string;
   supplierId?: string;
+  shipmentId?: string;
   documentId?: string;
   producer: string;
   farmName: string;
@@ -75,6 +78,28 @@ export type Supplier = {
   updatedAt: string;
   syncStatus: SyncStatus;
 };
+
+export type ShipmentStatus = "planned" | "in_transit" | "arrived" | "cancelled";
+
+export type Shipment = {
+  id: string;
+  reference: string;
+  product: string;
+  hsCode: string;
+  quantityKg: number;
+  originCountry: string;
+  originRegion: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  destination: string;
+  status: ShipmentStatus;
+  expectedArrival: string | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ShipmentInput = Omit<Shipment, "id" | "supplierName" | "createdAt" | "updatedAt">;
 
 export type DocumentRecord = {
   id: string;

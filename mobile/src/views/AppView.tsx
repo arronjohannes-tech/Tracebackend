@@ -28,10 +28,12 @@ import {
   getApiBaseUrl,
   getCurrentAuthHeaders,
   getOperation,
+  getRemoteShipments,
   getRemoteSuppliers,
-  requestOperation,
+  createRemoteShipment,
   registerAccount,
   submitDds,
+  updateRemoteShipment,
   uploadDocument,
   validateDds,
 } from "../api";
@@ -48,6 +50,9 @@ import {
   type Plot,
   type Position,
   type PositionGeofenceCheck,
+  type Shipment,
+  type ShipmentInput,
+  type ShipmentStatus,
   type Supplier,
   type SyncConflict,
 } from "../domain";
@@ -150,6 +155,7 @@ function Field({
   keyboardType,
   autoCapitalize = "sentences",
   secureTextEntry = false,
+  invalid = false,
 }: {
   label: string;
   value: string;
@@ -159,6 +165,7 @@ function Field({
   keyboardType?: "default" | "decimal-pad" | "number-pad" | "email-address" | "phone-pad";
   autoCapitalize?: "none" | "sentences";
   secureTextEntry?: boolean;
+  invalid?: boolean;
 }) {
   return (
     <View>
@@ -173,7 +180,7 @@ function Field({
         autoCapitalize={autoCapitalize}
         secureTextEntry={secureTextEntry}
         autoCorrect={secureTextEntry || autoCapitalize === "none" ? false : undefined}
-        style={[styles.input, multiline && styles.textArea]}
+        style={[styles.input, multiline && styles.textArea, invalid && styles.inputInvalid]}
         accessibilityLabel={label}
       />
     </View>
@@ -340,20 +347,44 @@ function SuppliersScreen({
   update,
   t,
   online,
+  shipments,
+  onShipmentsLoaded,
   selectedSupplierId,
   onSelectSupplier,
+  selectedShipmentId,
+  onSelectShipment,
+  canManageShipments,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
   online: boolean;
+  shipments: Shipment[];
+  onShipmentsLoaded: (shipments: Shipment[]) => void;
   selectedSupplierId: string | null;
   onSelectSupplier: (supplierId: string | null) => void;
+  selectedShipmentId: string | null;
+  onSelectShipment: (shipmentId: string | null) => void;
+  canManageShipments: boolean;
 }) {
   const selectedLocal = state.suppliers.find((item) => item.id === selectedSupplierId);
   const [name, setName] = useState(selectedLocal?.name ?? "");
   const [region, setRegion] = useState(selectedLocal?.region ?? "");
   const [remoteSuppliers, setRemoteSuppliers] = useState<Supplier[]>([]);
+  const [shipmentForm, setShipmentForm] = useState<ShipmentInput>({
+    reference: "",
+    product: "",
+    hsCode: "0901",
+    quantityKg: 0,
+    originCountry: "",
+    originRegion: "",
+    supplierId: null,
+    destination: "",
+    status: "planned",
+    expectedArrival: null,
+    notes: "",
+  });
+  const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const remoteOnly = remoteSuppliers.filter(
     (remote) => !state.suppliers.some((local) => local.id === remote.id),
@@ -363,6 +394,7 @@ function SuppliersScreen({
     setLoadingRemote(true);
     try {
       setRemoteSuppliers(await getRemoteSuppliers());
+      onShipmentsLoaded(await getRemoteShipments());
     } catch (error) {
       Alert.alert(t.common.failed, error instanceof Error ? error.message : String(error));
     } finally {
@@ -377,13 +409,67 @@ function SuppliersScreen({
   function selectSupplier(supplier: Supplier) {
     setName(supplier.name);
     setRegion(supplier.region);
+    onSelectShipment(null);
     onSelectSupplier(supplier.id);
   }
 
   function newSupplier() {
     setName("");
     setRegion("");
+    onSelectShipment(null);
     onSelectSupplier(null);
+  }
+
+  function editShipment(shipment: Shipment) {
+    setEditingShipmentId(shipment.id);
+    onSelectShipment(shipment.id);
+    setShipmentForm({
+      reference: shipment.reference,
+      product: shipment.product,
+      hsCode: shipment.hsCode,
+      quantityKg: shipment.quantityKg,
+      originCountry: shipment.originCountry,
+      originRegion: shipment.originRegion,
+      supplierId: shipment.supplierId,
+      destination: shipment.destination,
+      status: shipment.status,
+      expectedArrival: shipment.expectedArrival,
+      notes: shipment.notes,
+    });
+  }
+
+  function resetShipmentForm() {
+    setEditingShipmentId(null);
+    setShipmentForm({
+      reference: "",
+      product: "",
+      hsCode: "0901",
+      quantityKg: 0,
+      originCountry: "",
+      originRegion: "",
+      supplierId: null,
+      destination: "",
+      status: "planned",
+      expectedArrival: null,
+      notes: "",
+    });
+  }
+
+  async function saveShipment() {
+    if (!shipmentForm.reference.trim() || !Number.isFinite(shipmentForm.quantityKg) || shipmentForm.quantityKg <= 0) {
+      Alert.alert(t.alerts.required);
+      return;
+    }
+    try {
+      const saved = editingShipmentId
+        ? await updateRemoteShipment(editingShipmentId, shipmentForm)
+        : await createRemoteShipment(shipmentForm);
+      onShipmentsLoaded([saved, ...shipments.filter((item) => item.id !== saved.id)]);
+      onSelectShipment(saved.id);
+      resetShipmentForm();
+    } catch (error) {
+      Alert.alert(t.common.failed, error instanceof Error ? error.message : String(error));
+    }
   }
 
   function saveSupplier() {
@@ -495,6 +581,106 @@ function SuppliersScreen({
             <Text style={styles.empty}>{t.suppliers.remoteEmpty}</Text>
           ) : null}
           {remoteOnly.map(renderSupplier)}
+          <Section title={t.suppliers.shipmentsTitle} description={t.suppliers.shipmentsDescription}>
+            {shipments.length === 0 ? <Text style={styles.empty}>{t.suppliers.shipmentsEmpty}</Text> : null}
+            {shipments.map((shipment) => (
+              <View key={shipment.id} style={[styles.card, shipment.id === selectedShipmentId && styles.cardSelected]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: shipment.id === selectedShipmentId }}
+                  onPress={() => {
+                    onSelectShipment(shipment.id);
+                    onSelectSupplier(shipment.supplierId);
+                  }}
+                >
+                  <Text style={styles.cardTitle}>{shipment.reference} · {shipment.product}</Text>
+                  <Text style={styles.caption}>
+                    {shipment.quantityKg} kg · {shipment.originCountry}{shipment.originRegion ? ` / ${shipment.originRegion}` : ""}
+                  </Text>
+                  <Text style={styles.caption}>
+                    {t.suppliers.shipmentSupplier}: {shipment.supplierName ?? t.suppliers.noSupplier}
+                    {" · "}{t.suppliers.shipmentStatus}: {t.suppliers[`status_${shipment.status}`]}
+                  </Text>
+                  {shipment.destination ? <Text style={styles.caption}>{shipment.destination}</Text> : null}
+                </Pressable>
+                {canManageShipments ? (
+                  <Button label={t.suppliers.editShipment} icon="create" onPress={() => editShipment(shipment)} secondary />
+                ) : null}
+              </View>
+            ))}
+            {selectedShipmentId ? (
+              <Button
+                label={t.suppliers.clearShipment}
+                icon="close-circle"
+                onPress={() => {
+                  onSelectShipment(null);
+                  onSelectSupplier(null);
+                  resetShipmentForm();
+                }}
+                secondary
+              />
+            ) : null}
+            {canManageShipments ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>
+                  {editingShipmentId ? t.suppliers.editShipment : t.suppliers.newShipment}
+                </Text>
+                <Field label={t.suppliers.shipmentReference} value={shipmentForm.reference} onChangeText={(reference) => setShipmentForm((current) => ({ ...current, reference }))} />
+                <Field label={t.suppliers.shipmentProduct} value={shipmentForm.product} onChangeText={(product) => setShipmentForm((current) => ({ ...current, product }))} />
+                <Field label={t.suppliers.shipmentHsCode} value={shipmentForm.hsCode} onChangeText={(hsCode) => setShipmentForm((current) => ({ ...current, hsCode }))} />
+                <Field
+                  label={t.suppliers.shipmentQuantity}
+                  value={shipmentForm.quantityKg ? String(shipmentForm.quantityKg) : ""}
+                  onChangeText={(value) => setShipmentForm((current) => ({ ...current, quantityKg: Number(value.replace(",", ".")) }))}
+                  keyboardType="decimal-pad"
+                />
+                <Field label={t.suppliers.shipmentOriginCountry} value={shipmentForm.originCountry} onChangeText={(originCountry) => setShipmentForm((current) => ({ ...current, originCountry }))} />
+                <Field label={t.suppliers.shipmentOriginRegion} value={shipmentForm.originRegion} onChangeText={(originRegion) => setShipmentForm((current) => ({ ...current, originRegion }))} />
+                <Text style={styles.fieldLabel}>{t.suppliers.shipmentSupplier}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: shipmentForm.supplierId === null }}
+                  onPress={() => setShipmentForm((current) => ({ ...current, supplierId: null }))}
+                  style={[styles.documentChoice, shipmentForm.supplierId === null && styles.documentChoiceSelected]}
+                >
+                  <Text>{t.plots.noShipment}</Text>
+                </Pressable>
+                {[...state.suppliers, ...remoteOnly].map((supplier) => (
+                  <Pressable
+                    key={supplier.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: shipmentForm.supplierId === supplier.id }}
+                    onPress={() => setShipmentForm((current) => ({ ...current, supplierId: supplier.id }))}
+                    style={[styles.documentChoice, shipmentForm.supplierId === supplier.id && styles.documentChoiceSelected]}
+                  >
+                    <Text>{supplier.name} · {supplier.region}</Text>
+                  </Pressable>
+                ))}
+                <Field label={t.suppliers.shipmentDestination} value={shipmentForm.destination} onChangeText={(destination) => setShipmentForm((current) => ({ ...current, destination }))} />
+                <Text style={styles.fieldLabel}>{t.suppliers.shipmentStatus}</Text>
+                {(["planned", "in_transit", "arrived", "cancelled"] as ShipmentStatus[]).map((status) => (
+                  <Pressable
+                    key={status}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: shipmentForm.status === status }}
+                    onPress={() => setShipmentForm((current) => ({ ...current, status }))}
+                    style={[styles.documentChoice, shipmentForm.status === status && styles.documentChoiceSelected]}
+                  >
+                    <Text>{t.suppliers[`status_${status}`]}</Text>
+                  </Pressable>
+                ))}
+                <Field
+                  label={t.suppliers.shipmentExpectedArrival}
+                  value={shipmentForm.expectedArrival ?? ""}
+                  onChangeText={(value) => setShipmentForm((current) => ({ ...current, expectedArrival: value || null }))}
+                  placeholder="YYYY-MM-DD"
+                />
+                <Field label={t.suppliers.shipmentNotes} value={shipmentForm.notes} onChangeText={(notes) => setShipmentForm((current) => ({ ...current, notes }))} multiline />
+                <Button label={editingShipmentId ? t.suppliers.updateShipment : t.suppliers.createShipment} icon="save" onPress={() => void saveShipment()} />
+                {editingShipmentId ? <Button label={t.suppliers.newShipment} icon="add-circle" onPress={resetShipmentForm} secondary /> : null}
+              </View>
+            ) : null}
+          </Section>
         </>
       ) : null}
     </>
@@ -507,14 +693,24 @@ function PlotsScreen({
   state,
   update,
   t,
+  online,
   organizationId,
   selectedSupplierId,
+  shipments,
+  onShipmentsLoaded,
+  selectedShipmentId,
+  onSelectShipment,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
+  online: boolean;
   organizationId: string;
   selectedSupplierId: string | null;
+  shipments: Shipment[];
+  onShipmentsLoaded: (shipments: Shipment[]) => void;
+  selectedShipmentId: string | null;
+  onSelectShipment: (shipmentId: string | null) => void;
 }) {
   const [producer, setProducer] = useState("");
   const [farm, setFarm] = useState("");
@@ -527,14 +723,36 @@ function PlotsScreen({
   const [tracking, setTracking] = useState(false);
   const [geoJsonText, setGeoJsonText] = useState("");
   const [polygon, setPolygon] = useState<GeoJsonPolygon | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<"producer" | "farm" | "area", string>>>({});
+  const [polygonError, setPolygonError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [fix, setFix] = useState<{ check: PositionGeofenceCheck; accuracyM: number | null } | null>(null);
   const uploadedDocuments = state.documents.filter((document) => document.status === "uploaded");
+  const selectedShipment = shipments.find((shipment) => shipment.id === selectedShipmentId) ?? null;
+
+  useEffect(() => {
+    setSupplierId(selectedShipment?.supplierId ?? selectedSupplierId ?? "");
+  }, [selectedShipmentId, selectedShipment?.supplierId, selectedSupplierId]);
 
   useEffect(() => () => {
     watchRef.current?.remove();
     watchRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!online || shipments.length > 0) return;
+    let active = true;
+    void getRemoteShipments()
+      .then((loaded) => {
+        if (active) onShipmentsLoaded(loaded);
+      })
+      .catch((error) => {
+        if (active) Alert.alert(t.common.failed, error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [online, shipments.length, onShipmentsLoaded, t.common.failed]);
 
   function replaceTrackPoints(next: GpsTrackPoint[]) {
     trackPointsRef.current = next;
@@ -575,8 +793,10 @@ function PlotsScreen({
       setPolygon(next);
       replaceTrackPoints([]);
       setGeoJsonText(JSON.stringify(next, null, 2));
+      setPolygonError(null);
     } catch {
-      Alert.alert(t.plots.invalidPolygon);
+      setPolygon(null);
+      setPolygonError(t.plots.invalidPolygonDetail);
     }
   }
 
@@ -587,6 +807,7 @@ function PlotsScreen({
     replaceTrackPoints([]);
     setPolygon(null);
     setGeoJsonText("");
+    setPolygonError(null);
     setFix(null);
   }
 
@@ -705,28 +926,54 @@ function PlotsScreen({
   }
 
   function savePlot() {
-    if (!producer.trim() || !farm.trim() || !area.trim() || !polygon) {
-      Alert.alert(t.alerts.required);
-      return;
+    const parsedArea = area.trim() ? Number(area.replace(",", ".")) : Number.NaN;
+    const nextFieldErrors = {
+      ...(!producer.trim() ? { producer: t.plots.producerRequired } : {}),
+      ...(!farm.trim() ? { farm: t.plots.farmRequired } : {}),
+      ...(!area.trim()
+        ? { area: t.plots.areaRequired }
+        : !Number.isFinite(parsedArea) || parsedArea <= 0
+          ? { area: t.plots.areaInvalid }
+          : {}),
+    };
+    let polygonForSave = polygon;
+    let nextPolygonError: string | null = null;
+    if (geoJsonText.trim()) {
+      try {
+        polygonForSave = parsePolygon(geoJsonText);
+      } catch {
+        polygonForSave = null;
+        nextPolygonError = t.plots.invalidPolygonDetail;
+      }
+    } else if (!polygonForSave && trackPoints.length >= 3) {
+      try {
+        polygonForSave = closePolygon(trackPoints.map((point) => point.position));
+      } catch {
+        nextPolygonError = t.plots.invalidPolygonDetail;
+      }
     }
-    const parsedArea = Number(area.replace(",", "."));
-    if (!Number.isFinite(parsedArea) || parsedArea <= 0) {
-      Alert.alert(t.plots.invalidPolygon);
+    if (!polygonForSave) {
+      nextPolygonError ??= t.plots.polygonRequired;
+    }
+    setFieldErrors(nextFieldErrors);
+    setPolygonError(nextPolygonError);
+    if (Object.keys(nextFieldErrors).length > 0 || !polygonForSave) {
       return;
     }
     const now = new Date().toISOString();
     const localGeofenceResult = evaluatePlotGeofence(
-      polygon,
+      polygonForSave,
       state.geofences.filter((item) => item.organizationId === organizationId),
     );
     const plot: Plot = {
       id: createUuid(),
-      supplierId: supplierId.trim() || undefined,
+      supplierId: (selectedShipment ? selectedShipment.supplierId : supplierId.trim()) || undefined,
+      ...(selectedShipment ? { shipmentId: selectedShipment.id } : {}),
       documentId: documentId || undefined,
       producer: producer.trim(),
       farmName: farm.trim(),
       areaHa: parsedArea.toFixed(2),
-      polygon,
+      polygon: polygonForSave,
       trackPoints,
       localGeofenceResult,
       geofenceStatus: localGeofenceResult === "outside"
@@ -769,10 +1016,63 @@ function PlotsScreen({
     <>
       <Section title={t.plots.title} description={t.plots.description} />
       <View style={styles.card}>
-        <Field label={t.plots.producer} value={producer} onChangeText={setProducer} />
-        <Field label={t.plots.farm} value={farm} onChangeText={setFarm} />
-        <Field label={t.plots.area} value={area} onChangeText={setArea} keyboardType="decimal-pad" />
-        <Field label={t.plots.supplierId} value={supplierId} onChangeText={setSupplierId} />
+        <Field label={t.plots.producer} value={producer} onChangeText={(value) => {
+          setProducer(value);
+          setFieldErrors((current) => ({ ...current, producer: undefined }));
+        }} invalid={Boolean(fieldErrors.producer)} />
+        {fieldErrors.producer ? <Text style={styles.errorText}>{fieldErrors.producer}</Text> : null}
+        <Field label={t.plots.farm} value={farm} onChangeText={(value) => {
+          setFarm(value);
+          setFieldErrors((current) => ({ ...current, farm: undefined }));
+        }} invalid={Boolean(fieldErrors.farm)} />
+        {fieldErrors.farm ? <Text style={styles.errorText}>{fieldErrors.farm}</Text> : null}
+        <Field label={t.plots.area} value={area} onChangeText={(value) => {
+          setArea(value);
+          setFieldErrors((current) => ({ ...current, area: undefined }));
+        }} keyboardType="decimal-pad" invalid={Boolean(fieldErrors.area)} />
+        {fieldErrors.area ? <Text style={styles.errorText}>{fieldErrors.area}</Text> : null}
+        <Text style={styles.fieldLabel}>{t.plots.selectedShipment}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedShipmentId === null }}
+          onPress={() => {
+            onSelectShipment(null);
+            setSupplierId(selectedSupplierId ?? "");
+          }}
+          style={[styles.documentChoice, !selectedShipmentId && styles.documentChoiceSelected]}
+        >
+          <Text>{t.suppliers.noSupplier}</Text>
+        </Pressable>
+        {shipments.map((shipment) => (
+          <Pressable
+            key={shipment.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: shipment.id === selectedShipmentId }}
+            onPress={() => {
+              onSelectShipment(shipment.id);
+              setSupplierId(shipment.supplierId ?? "");
+            }}
+            style={[styles.documentChoice, shipment.id === selectedShipmentId && styles.documentChoiceSelected]}
+          >
+            <Text>{shipment.reference} · {shipment.product} · {shipment.quantityKg} kg</Text>
+          </Pressable>
+        ))}
+        {selectedShipment ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{t.plots.shipment}</Text>
+            <Text style={styles.caption}>{selectedShipment.originCountry}{selectedShipment.originRegion ? ` / ${selectedShipment.originRegion}` : ""} → {selectedShipment.destination || "—"}</Text>
+            <Text style={styles.caption}>{t.suppliers.shipmentSupplier}: {selectedShipment.supplierName ?? t.suppliers.noSupplier}</Text>
+            <Text style={styles.caption}>{t.suppliers.shipmentStatus}: {t.suppliers[`status_${selectedShipment.status}`]}</Text>
+          </View>
+        ) : null}
+        {selectedShipment ? (
+          <View>
+            <Text style={styles.label}>{t.plots.supplierId}</Text>
+            <Text style={styles.caption}>{selectedShipment.supplierName ?? t.suppliers.noSupplier}</Text>
+          </View>
+        ) : (
+          <Field label={t.plots.supplierId} value={supplierId} onChangeText={setSupplierId} />
+        )}
         <Text style={styles.caption}>{t.plots.trackCount}: {trackPoints.length} / {MAX_GPS_TRACK_POINTS}</Text>
         <Button
           label={locating ? "GPS ..." : t.plots.capturePoint}
@@ -831,10 +1131,17 @@ function PlotsScreen({
         <Field
           label={t.plots.polygonJson}
           value={geoJsonText}
-          onChangeText={setGeoJsonText}
+          onChangeText={(value) => {
+            setGeoJsonText(value);
+            setPolygon(null);
+            setPolygonError(null);
+          }}
           multiline
           placeholder='{"type":"Polygon","coordinates":[...]}'
+          invalid={Boolean(polygonError)}
         />
+        <Text style={styles.caption}>{t.plots.polygonHint}</Text>
+        {polygonError ? <Text style={styles.errorText}>{polygonError}</Text> : null}
         <Button label={t.plots.applyGeoJson} icon="checkmark-circle" onPress={() => applyPolygonText()} secondary />
         <Button label={t.plots.saveDraft} icon="save" onPress={savePlot} />
       </View>
@@ -862,6 +1169,21 @@ function PlotsScreen({
               {t.plots.linkedDocument}: {state.documents.find((document) => document.id === plot.documentId)?.fileName ?? plot.documentId}
             </Text>
           ) : null}
+          {plot.shipmentId ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{t.plots.shipment}</Text>
+              {(() => {
+                const shipment = shipments.find((item) => item.id === plot.shipmentId);
+                return shipment ? (
+                  <>
+                    <Text style={styles.caption}>{shipment.reference} · {shipment.product} · {shipment.quantityKg} kg</Text>
+                    <Text style={styles.caption}>{shipment.originCountry}{shipment.originRegion ? ` / ${shipment.originRegion}` : ""} → {shipment.destination || "—"}</Text>
+                    <Text style={styles.caption}>{t.suppliers.shipmentSupplier}: {shipment.supplierName ?? t.suppliers.noSupplier}</Text>
+                  </>
+                ) : <Text style={styles.caption}>{plot.shipmentId}</Text>;
+              })()}
+            </View>
+          ) : null}
           <PlotMapPreview
             positions={plot.polygon.coordinates[0].slice(0, -1)}
             trackPoints={plot.trackPoints ?? []}
@@ -886,8 +1208,6 @@ function OperationsScreen({
   t: Translation;
   online: boolean;
 }) {
-  const [subjectId, setSubjectId] = useState("");
-  const [ddsPlotIds, setDdsPlotIds] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState({
     uploads: false,
     requests: false,
@@ -1128,27 +1448,6 @@ function OperationsScreen({
     }
   }
 
-  async function create(kind: OperationalRequest["kind"]) {
-    if (!subjectId.trim()) {
-      Alert.alert(t.alerts.required);
-      return;
-    }
-    if (!configured) {
-      Alert.alert(t.sync.notConfigured, t.operations.providerBlocked);
-      return;
-    }
-    try {
-      if (kind === "dds" && ddsPlotIds.length === 0) { Alert.alert(t.alerts.required); return; }
-      const result = await requestOperation(kind, subjectId.trim(), createUuid(), kind === "dds" ? ddsPlotIds : undefined);
-      update((current) => ({
-        ...current,
-        operations: [mergeOperationLocalState(result, current.operations.find((item) => item.id === result.id)), ...current.operations.filter((item) => item.id !== result.id)],
-      }));
-    } catch (error) {
-      Alert.alert(t.common.failed, providerError(error));
-    }
-  }
-
   async function refresh(operation: OperationalRequest) {
     try {
       const result = await getOperation(operation.kind, operation.id);
@@ -1206,20 +1505,6 @@ function OperationsScreen({
           </View>
         </View>
       ) : null}
-      <View style={styles.card}>
-        <Field label={t.common.subjectId} value={subjectId} onChangeText={setSubjectId} />
-        {state.plots.filter(plot => plot.syncStatus === "synced").map(plot => (
-          <Pressable key={plot.id} accessibilityRole="checkbox" accessibilityState={{checked: ddsPlotIds.includes(plot.id)}} onPress={() => setDdsPlotIds(current => current.includes(plot.id) ? current.filter(id => id !== plot.id) : [...current, plot.id])}>
-            <Text style={styles.description}>{ddsPlotIds.includes(plot.id) ? "☑" : "☐"} DDS · {plot.farmName}</Text>
-          </Pressable>
-        ))}
-        <Text style={styles.cardTitle}>{t.operations.satellite}</Text>
-        <Button label={t.operations.requestSatellite} icon="planet" onPress={() => void create("satellite")} disabled={!configured} />
-        <Text style={styles.cardTitle}>{t.operations.evidence}</Text>
-        <Button label={t.operations.requestEvidence} icon="archive" onPress={() => void create("evidence_pack")} disabled={!configured} />
-        <Text style={styles.cardTitle}>{t.operations.dds}</Text>
-        <Button label={t.operations.createDds} icon="document-text" onPress={() => void create("dds")} disabled={!configured} />
-      </View>
       <CollapsibleListSection
         title={t.operations.uploadsList}
         count={state.documents.length}
@@ -1597,7 +1882,7 @@ function LoginScreen({ controller }: { controller: AppController }) {
     <AuthLayout controller={controller}>
         <View style={styles.loginBrand}>
           <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
-          <Text style={styles.loginTitle}>SCTracker</Text>
+          <Text style={styles.loginTitle}>Tracecomplaince</Text>
           <Text style={styles.headerSub}>{t.brandSubtitle}</Text>
         </View>
         <View style={styles.card}>
@@ -1707,6 +1992,8 @@ export function AppView({ controller }: { controller: AppController }) {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [remoteShipments, setRemoteShipments] = useState<Shipment[]>([]);
   const {
     auth,
     activeTab,
@@ -1727,7 +2014,16 @@ export function AppView({ controller }: { controller: AppController }) {
   } = controller;
 
   const organizationId = auth.session?.selectedOrganizationId;
-  useEffect(() => setSelectedSupplierId(null), [organizationId]);
+  const userRoles = auth.session?.user.roles ??
+    (auth.session?.user.role ? [auth.session.user.role] : []);
+  const canManageShipments = userRoles.some((role) =>
+    ["system_admin", "org_admin", "reviewer"].includes(role),
+  );
+  useEffect(() => {
+    setSelectedSupplierId(null);
+    setSelectedShipmentId(null);
+    setRemoteShipments([]);
+  }, [organizationId]);
 
   const screen = useMemo(() => {
     if (!state) return null;
@@ -1738,8 +2034,13 @@ export function AppView({ controller }: { controller: AppController }) {
           update={update}
           t={t}
           online={online && configured}
+          shipments={remoteShipments}
+          onShipmentsLoaded={setRemoteShipments}
           selectedSupplierId={selectedSupplierId}
           onSelectSupplier={setSelectedSupplierId}
+          selectedShipmentId={selectedShipmentId}
+          onSelectShipment={setSelectedShipmentId}
+          canManageShipments={canManageShipments}
         />
       );
     }
@@ -1749,8 +2050,13 @@ export function AppView({ controller }: { controller: AppController }) {
           state={state}
           update={update}
           t={t}
+          online={online && configured}
           organizationId={auth.session?.selectedOrganizationId ?? ""}
           selectedSupplierId={selectedSupplierId}
+          shipments={remoteShipments}
+          onShipmentsLoaded={setRemoteShipments}
+          selectedShipmentId={selectedShipmentId}
+          onSelectShipment={setSelectedShipmentId}
         />
       );
     }
@@ -1759,7 +2065,7 @@ export function AppView({ controller }: { controller: AppController }) {
     }
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
-  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId]);
+  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments, canManageShipments]);
 
   if (auth.activation) {
     return <ActivationScreen key={auth.activation.token ?? "activation-result"} controller={controller} />;
@@ -1809,7 +2115,7 @@ export function AppView({ controller }: { controller: AppController }) {
       <View style={styles.header}>
         <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
         <View style={styles.flex}>
-          <Text style={styles.brand}>SCTracker</Text>
+          <Text style={styles.brand}>Tracecomplaince</Text>
           <Text style={styles.headerSub}>{t.brandSubtitle}</Text>
         </View>
         <View style={[styles.connectivity, !configured && styles.connectivityBlocked]}>
@@ -1965,6 +2271,7 @@ const styles = StyleSheet.create({
   fixText: { color: palette.ink, fontSize: 10, fontWeight: "700", lineHeight: 15 },
   label: { marginBottom: 5, color: palette.ink, fontSize: 10, fontWeight: "700" },
   input: { minHeight: 45, paddingHorizontal: 12, borderWidth: 1, borderColor: palette.line, borderRadius: 9, color: palette.ink, backgroundColor: "#FFFFFF", fontSize: 12 },
+  inputInvalid: { borderColor: palette.red, borderWidth: 2, backgroundColor: palette.softRed },
   textArea: { minHeight: 130, paddingTop: 10, fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }), textAlignVertical: "top" },
   button: { minHeight: 45, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 10, borderRadius: 9, backgroundColor: palette.forest },
   buttonSecondary: { borderWidth: 1, borderColor: palette.forest, backgroundColor: "#FFFFFF" },

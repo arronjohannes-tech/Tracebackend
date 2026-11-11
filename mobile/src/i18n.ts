@@ -83,6 +83,30 @@ export type Translation = {
     remoteTitle: string;
     remoteEmpty: string;
     loadRemote: string;
+    shipmentsTitle: string;
+    shipmentsDescription: string;
+    shipmentsEmpty: string;
+    editShipment: string;
+    newShipment: string;
+    shipmentReference: string;
+    shipmentProduct: string;
+    shipmentHsCode: string;
+    shipmentQuantity: string;
+    shipmentOriginCountry: string;
+    shipmentOriginRegion: string;
+    shipmentSupplier: string;
+    noSupplier: string;
+    shipmentDestination: string;
+    shipmentStatus: string;
+    status_planned: string;
+    status_in_transit: string;
+    status_arrived: string;
+    status_cancelled: string;
+    shipmentExpectedArrival: string;
+    shipmentNotes: string;
+    createShipment: string;
+    updateShipment: string;
+    clearShipment: string;
   };
   plots: {
     title: string;
@@ -91,6 +115,16 @@ export type Translation = {
     farm: string;
     area: string;
     supplierId: string;
+    selectedShipment: string;
+    shipment: string;
+    noShipment: string;
+    producerRequired: string;
+    farmRequired: string;
+    areaRequired: string;
+    areaInvalid: string;
+    polygonRequired: string;
+    invalidPolygonDetail: string;
+    polygonHint: string;
     capturePoint: string;
     pointCount: string;
     polygonJson: string;
@@ -212,10 +246,27 @@ export const translations = {
       update: "Lieferant aktualisieren", newSupplier: "Neuer Lieferant", selected: "Ausgewählt",
       remoteTitle: "Lieferanten aus der Datenbank", remoteEmpty: "Keine weiteren Lieferanten in der Datenbank.",
       loadRemote: "Aus Datenbank laden",
+      shipmentsTitle: "Sendungen", shipmentsDescription: "Sendungen verwalten und für die Zuordnung zu einem Plot auswählen.",
+      shipmentsEmpty: "Noch keine Sendungen vorhanden.", editShipment: "Sendung bearbeiten", newShipment: "Neue Sendung",
+      shipmentReference: "Referenz", shipmentProduct: "Produkt", shipmentHsCode: "HS-Code",
+      shipmentQuantity: "Menge (kg)", shipmentOriginCountry: "Ursprungsland", shipmentOriginRegion: "Ursprungsregion",
+      shipmentSupplier: "Lieferant", noSupplier: "Kein Lieferant", shipmentDestination: "Ziel",
+      shipmentStatus: "Sendungsstatus", status_planned: "Geplant", status_in_transit: "Unterwegs",
+      status_arrived: "Eingetroffen", status_cancelled: "Storniert", shipmentExpectedArrival: "Erwartete Ankunft (JJJJ-MM-TT)",
+      shipmentNotes: "Notizen", createShipment: "Sendung erstellen", updateShipment: "Sendung speichern",
+      clearShipment: "Sendungsauswahl aufheben",
     },
     plots: {
       title: "GeoJSON-Plots", description: "Eine Grundstücksgrenze per GPS-Begehung erfassen oder ein GeoJSON-Polygon importieren.",
       producer: "Produzent", farm: "Plot- oder Farmname", area: "Fläche (ha)", supplierId: "Lieferanten-ID (optional)",
+      selectedShipment: "Ausgewählte Sendung", shipment: "Sendungsdetails", noShipment: "Keine Sendung",
+      producerRequired: "Bitte den Produzentennamen eingeben.",
+      farmRequired: "Bitte den Plot- oder Farmnamen eingeben.",
+      areaRequired: "Bitte die Fläche in Hektar eingeben.",
+      areaInvalid: "Die Fläche muss eine Zahl größer als 0 sein.",
+      polygonRequired: "Bitte ein GeoJSON-Polygon übernehmen oder mindestens drei GPS-Punkte erfassen.",
+      invalidPolygonDetail: "GeoJSON muss ein Polygon enthalten. Koordinaten als [Längengrad, Breitengrad] angeben; mindestens drei verschiedene Punkte verwenden und den ersten Punkt am Ende wiederholen.",
+      polygonHint: "GeoJSON Polygon mit Koordinaten [Längengrad, Breitengrad]. GPS-Punkte werden beim Speichern automatisch zu einem Polygon geschlossen.",
       capturePoint: "GPS-Punkt hinzufügen", pointCount: "Punkte", polygonJson: "GeoJSON Polygon",
       importGeoJson: "GeoJSON importieren", applyGeoJson: "GeoJSON übernehmen", saveDraft: "Offline-Plot speichern",
       empty: "Noch keine Plot-Entwürfe.", invalidPolygon: "Das Polygon ist ungültig. Mindestens drei unterschiedliche Positionen sind erforderlich.",
@@ -310,10 +361,27 @@ export const translations = {
       update: "Update supplier", newSupplier: "New supplier", selected: "Selected",
       remoteTitle: "Suppliers from the database", remoteEmpty: "No further suppliers in the database.",
       loadRemote: "Load from database",
+      shipmentsTitle: "Shipments", shipmentsDescription: "Manage shipments and select one to link to a plot.",
+      shipmentsEmpty: "No shipments yet.", editShipment: "Edit shipment", newShipment: "New shipment",
+      shipmentReference: "Reference", shipmentProduct: "Product", shipmentHsCode: "HS code",
+      shipmentQuantity: "Quantity (kg)", shipmentOriginCountry: "Origin country", shipmentOriginRegion: "Origin region",
+      shipmentSupplier: "Supplier", noSupplier: "No supplier", shipmentDestination: "Destination",
+      shipmentStatus: "Shipment status", status_planned: "Planned", status_in_transit: "In transit",
+      status_arrived: "Arrived", status_cancelled: "Cancelled", shipmentExpectedArrival: "Expected arrival (YYYY-MM-DD)",
+      shipmentNotes: "Notes", createShipment: "Create shipment", updateShipment: "Save shipment",
+      clearShipment: "Clear shipment selection",
     },
     plots: {
       title: "GeoJSON plots", description: "Record a parcel boundary while walking with GPS, or import a GeoJSON Polygon.",
       producer: "Producer", farm: "Plot or farm name", area: "Area (ha)", supplierId: "Supplier ID (optional)",
+      selectedShipment: "Selected shipment", shipment: "Shipment details", noShipment: "No shipment",
+      producerRequired: "Enter the producer name.",
+      farmRequired: "Enter the plot or farm name.",
+      areaRequired: "Enter the area in hectares.",
+      areaInvalid: "Area must be a number greater than 0.",
+      polygonRequired: "Apply a GeoJSON Polygon or capture at least three GPS points.",
+      invalidPolygonDetail: "GeoJSON must contain a Polygon. Use coordinates as [longitude, latitude], include at least three distinct points, and repeat the first point at the end.",
+      polygonHint: "GeoJSON Polygon coordinates use [longitude, latitude]. GPS points are automatically closed into a polygon when saved.",
       capturePoint: "Add GPS point", pointCount: "Points", polygonJson: "GeoJSON Polygon",
       importGeoJson: "Import GeoJSON", applyGeoJson: "Apply GeoJSON", saveDraft: "Save offline plot",
       empty: "No plot drafts yet.", invalidPolygon: "The polygon is invalid. At least three distinct positions are required.",
@@ -407,11 +475,28 @@ export const translations = {
       update: "አቅራቢን አዘምን", newSupplier: "አዲስ አቅራቢ", selected: "ተመርጧል",
       remoteTitle: "ከመረጃ ቋት የመጡ አቅራቢዎች", remoteEmpty: "በመረጃ ቋቱ ውስጥ ተጨማሪ አቅራቢ የለም።",
       loadRemote: "ከመረጃ ቋት ጫን",
+      shipmentsTitle: "ጭነቶች", shipmentsDescription: "ጭነቶችን ያስተዳድሩ እና ከመሬት ጋር ለማያያዝ አንዱን ይምረጡ።",
+      shipmentsEmpty: "ገና ጭነት የለም።", editShipment: "ጭነት አርትዕ", newShipment: "አዲስ ጭነት",
+      shipmentReference: "ማጣቀሻ", shipmentProduct: "ምርት", shipmentHsCode: "HS ኮድ",
+      shipmentQuantity: "መጠን (ኪ.ግ.)", shipmentOriginCountry: "የመነሻ አገር", shipmentOriginRegion: "የመነሻ ክልል",
+      shipmentSupplier: "አቅራቢ", noSupplier: "አቅራቢ የለም", shipmentDestination: "መድረሻ",
+      shipmentStatus: "የጭነት ሁኔታ", status_planned: "ታቅዷል", status_in_transit: "በመጓጓዣ ላይ",
+      status_arrived: "ደርሷል", status_cancelled: "ተሰርዟል", shipmentExpectedArrival: "የሚጠበቅበት ቀን (YYYY-MM-DD)",
+      shipmentNotes: "ማስታወሻዎች", createShipment: "ጭነት ፍጠር", updateShipment: "ጭነት አስቀምጥ",
+      clearShipment: "የጭነት ምርጫ አጽዳ",
     },
     plots: {
       title: "GeoJSON መሬቶች", description: "የመሬት ድንበርን በGPS ጉዞ ይመዝግቡ ወይም GeoJSON Polygon ያስገቡ።",
       producer: "አምራች", farm: "የመሬት ወይም የእርሻ ስም", area: "ስፋት (ሄክታር)",
       supplierId: "የአቅራቢ መለያ (አማራጭ)", capturePoint: "GPS ነጥብ ጨምር", pointCount: "ነጥቦች",
+      selectedShipment: "የተመረጠ ጭነት", shipment: "የጭነት ዝርዝሮች", noShipment: "ጭነት የለም",
+      producerRequired: "የአምራቹን ስም ያስገቡ።",
+      farmRequired: "የመሬቱን ወይም የእርሻውን ስም ያስገቡ።",
+      areaRequired: "ስፋቱን በሄክታር ያስገቡ።",
+      areaInvalid: "ስፋቱ ከ0 በላይ የሆነ ቁጥር መሆን አለበት።",
+      polygonRequired: "GeoJSON Polygon ይተግብሩ ወይም ቢያንስ ሶስት የGPS ነጥቦችን ይመዝግቡ።",
+      invalidPolygonDetail: "GeoJSON Polygon መያዝ አለበት። ኮርዲኔቶችን [ኬንትሮስ፣ ኬክሮስ] ቅርጽ ይጠቀሙ፤ ቢያንስ ሶስት የተለያዩ ነጥቦችን ያስገቡና የመጀመሪያውን በመጨረሻ ይድገሙ።",
+      polygonHint: "GeoJSON Polygon ኮርዲኔቶች [ኬንትሮስ፣ ኬክሮስ] ናቸው። የGPS ነጥቦች ሲቀመጡ ወደ Polygon ይዘጋሉ።",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON አስገባ", applyGeoJson: "GeoJSON ተግብር",
       saveDraft: "መሬቱን ከመስመር ውጭ አስቀምጥ", empty: "ገና የመሬት ረቂቅ የለም።",
       invalidPolygon: "ፖሊጎኑ ትክክል አይደለም። ቢያንስ ሶስት የተለያዩ ቦታዎች ያስፈልጋሉ።",
@@ -505,11 +590,28 @@ export const translations = {
       update: "ኣቕራቢ ኣሐድስ", newSupplier: "ሓድሽ ኣቕራቢ", selected: "ተመሪጹ",
       remoteTitle: "ካብ መዝገብ ሓበሬታ ዝመጹ ኣቕረብቲ", remoteEmpty: "ኣብ መዝገብ ሓበሬታ ተወሳኺ ኣቕራቢ የለን።",
       loadRemote: "ካብ መዝገብ ሓበሬታ ጽዓን",
+      shipmentsTitle: "ልኡኻት", shipmentsDescription: "ልኡኻት ኣመሓድሩን ምስ ግራት ንምትእስሳር ሓደ ምረጹን።",
+      shipmentsEmpty: "ገና ልኡኽ የለን።", editShipment: "ልኡኽ ኣሐድስ", newShipment: "ሓድሽ ልኡኽ",
+      shipmentReference: "መወከሲ", shipmentProduct: "ፍርያት", shipmentHsCode: "ኮድ HS",
+      shipmentQuantity: "መጠን (ኪ.ግ.)", shipmentOriginCountry: "ሃገር መበገሲ", shipmentOriginRegion: "ክልል መበገሲ",
+      shipmentSupplier: "ኣቕራቢ", noSupplier: "ኣቕራቢ የለን", shipmentDestination: "መዳረሻ",
+      shipmentStatus: "ኩነታት ልኡኽ", status_planned: "ተመዲቡ", status_in_transit: "ኣብ መንገዲ",
+      status_arrived: "በጺሑ", status_cancelled: "ተሰሪዙ", shipmentExpectedArrival: "ዝጽበ ቀንዲ መበጽሒ (YYYY-MM-DD)",
+      shipmentNotes: "መዘኻኸሪ", createShipment: "ልኡኽ ፍጠር", updateShipment: "ልኡኽ ዓቅብ",
+      clearShipment: "ምርጫ ልኡኽ ኣጽሪ",
     },
     plots: {
       title: "GeoJSON ግራውቲ", description: "ዶብ መሬት ብGPS ጉዕዞ መዝግቡ ወይ GeoJSON Polygon ኣእትዉ።",
       producer: "ኣፍራዪ", farm: "ስም ግራት ወይ ሕርሻ", area: "ስፍሓት (ሄክታር)",
       supplierId: "መለለዪ ኣቕራቢ (ኣማራጺ)", capturePoint: "ነጥቢ GPS ወስኽ", pointCount: "ነጥብታት",
+      selectedShipment: "ዝተመርጸ ልኡኽ", shipment: "ዝርዝር ልኡኽ", noShipment: "ልኡኽ የለን",
+      producerRequired: "ስም ኣፍራዪ ኣእትዉ።",
+      farmRequired: "ስም ግራት ወይ ሕርሻ ኣእትዉ።",
+      areaRequired: "ስፍሓት ብሄክታር ኣእትዉ።",
+      areaInvalid: "ስፍሓት ካብ 0 ዝዓቢ ቁጽሪ ክኸውን ኣለዎ።",
+      polygonRequired: "GeoJSON Polygon ተግብሩ ወይ እንተወሓደ ሰለስተ ነጥብታት GPS መዝግቡ።",
+      invalidPolygonDetail: "GeoJSON Polygon ክሕዝ ኣለዎ። ኮርዲኔት [ንውሓት፣ ላቲቱድ] ተጠቐሙ፤ እንተወሓደ ሰለስተ ዝተፈላለዩ ነጥብታት ኣእትዉን እቲ ቀዳማይ ኣብ መወዳእታ ድገሙን።",
+      polygonHint: "GeoJSON Polygon ኮርዲኔት [ንውሓት፣ ላቲቱድ] ይጥቀም። ነጥብታት GPS ኣብ ግዜ ምቕማጥ ናብ Polygon ይዕጸዉ።",
       polygonJson: "GeoJSON Polygon", importGeoJson: "GeoJSON ኣእቱ", applyGeoJson: "GeoJSON ተግብር",
       saveDraft: "ግራት ካብ መስመር ወጻኢ ዓቅብ", empty: "ገና ንድፊ ግራት የለን።",
       invalidPolygon: "እቲ ፖሊጎን ቅኑዕ ኣይኮነን። እንተወሓደ ሰለስተ ዝተፈላለዩ ቦታታት የድልዩ።",

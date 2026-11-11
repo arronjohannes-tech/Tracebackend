@@ -25,6 +25,7 @@ export function plotJson(row: Record<string, unknown>) {
     id: row.id,
     revision: Number(row.revision),
     ...(row.supplier_id ? { supplierId: row.supplier_id } : {}),
+    ...(row.shipment_id ? { shipmentId: row.shipment_id } : {}),
     ...(row.document_id ? { documentId: row.document_id } : {}),
     producer: row.producer,
     farmName: row.farm_name,
@@ -145,6 +146,15 @@ export async function applyPlot(
     return { conflict: plotJson(existing) };
   }
   if (!existing && operation.baseVersion !== 0) throw conflict("ENTITY_VERSION_MISSING", "The referenced base version does not exist.");
+  if (operation.payload.shipmentId) {
+    const shipment = await queryOne<{ supplier_id: string | null }>(client,
+      "SELECT supplier_id FROM shipments WHERE organization_id = $1 AND id = $2 FOR KEY SHARE",
+      [organizationId, operation.payload.shipmentId]);
+    if (!shipment) throw conflict("SHIPMENT_NOT_AVAILABLE", "The linked shipment must belong to this organization.");
+    if ((shipment.supplier_id ?? undefined) !== operation.payload.supplierId) {
+      throw conflict("SHIPMENT_SUPPLIER_MISMATCH", "The plot supplier must match the linked shipment supplier.");
+    }
+  }
   if (operation.payload.documentId) {
     const document = await queryOne<{ id: string }>(client,
       "SELECT id FROM documents WHERE organization_id = $1 AND id = $2 AND status = 'completed'",
@@ -153,15 +163,16 @@ export async function applyPlot(
   }
   const row = await queryOne<Record<string, unknown>>(client,
     `INSERT INTO plots(
-       id, organization_id, supplier_id, document_id, producer, farm_name, area_ha,
+       id, organization_id, supplier_id, shipment_id, document_id, producer, farm_name, area_ha,
        polygon, track_points, geofence_status, local_geofence_result, captured_at, source_updated_at
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7,
-       ST_SetSRID(ST_GeomFromGeoJSON($8), 4326), $9::jsonb, $10, $11, $12, $13
+       $1, $2, $3, $4, $5, $6, $7, $8,
+       ST_SetSRID(ST_GeomFromGeoJSON($9), 4326), $10::jsonb, $11, $12, $13, $14
      )
      ON CONFLICT (organization_id, id) DO UPDATE SET
        revision = plots.revision + 1,
-       supplier_id = EXCLUDED.supplier_id, document_id = EXCLUDED.document_id,
+       supplier_id = EXCLUDED.supplier_id, shipment_id = EXCLUDED.shipment_id,
+       document_id = EXCLUDED.document_id,
        producer = EXCLUDED.producer,
        farm_name = EXCLUDED.farm_name, area_ha = EXCLUDED.area_ha,
        polygon = EXCLUDED.polygon, track_points = EXCLUDED.track_points,
@@ -174,6 +185,7 @@ export async function applyPlot(
       operation.entityId,
       organizationId,
       operation.payload.supplierId ?? null,
+      operation.payload.shipmentId ?? null,
       operation.payload.documentId ?? null,
       operation.payload.producer,
       operation.payload.farmName,

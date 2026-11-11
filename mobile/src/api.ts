@@ -7,6 +7,8 @@ import type {
   OutboxOperation,
   PullResponse,
   PushResponse,
+  Shipment,
+  ShipmentInput,
   Supplier,
 } from "./domain";
 
@@ -264,6 +266,24 @@ export async function selectOrganization(organizationId: string): Promise<AuthSe
 export async function getRemoteSuppliers(): Promise<Supplier[]> {
   const dashboard = await request<{ suppliers?: Array<Omit<Supplier, "syncStatus">> }>("/api/v1/dashboard");
   return (dashboard.suppliers ?? []).map((supplier) => ({ ...supplier, syncStatus: "synced" }));
+}
+
+export function getRemoteShipments(): Promise<Shipment[]> {
+  return request("/api/v1/shipments");
+}
+
+export function createRemoteShipment(input: ShipmentInput): Promise<Shipment> {
+  return request("/api/v1/shipments", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRemoteShipment(id: string, input: ShipmentInput): Promise<Shipment> {
+  return request(`/api/v1/shipments/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
 }
 
 export function getOrganizationGeofences(): Promise<OrganizationGeofence[]> {
