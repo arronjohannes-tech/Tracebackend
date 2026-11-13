@@ -45,7 +45,7 @@ export function plotJson(row: Record<string, unknown>) {
 export async function checkGeofence(
   client: PoolClient,
   organizationId: string,
-  operation: Extract<PushOperation, { entityType: "plot" }>,
+  operation: Pick<Extract<PushOperation, { entityType: "plot" }>, "entityId">,
   polygon: GeoJsonPolygon,
 ): Promise<GeofenceCheckResult> {
   const hash = geometryHash(polygon);

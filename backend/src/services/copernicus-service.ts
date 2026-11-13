@@ -6,9 +6,11 @@ import { AppError, badRequest } from "../errors.js";
 import { parsePolygon } from "../geo.js";
 import {
   createProcessClient,
+  buildBackgroundRequest,
   buildProcessRequest,
   extensionFor,
   ProcessApiError,
+  type Bbox,
   type ProcessClient,
   type ProcessCredentials,
 } from "../copernicus/process-client.js";
@@ -29,6 +31,13 @@ export type AnalysisResult = {
   storagePath: string;
   contentType: string;
   bytes: number;
+  from: string;
+  to: string;
+};
+export type BackgroundImage = {
+  bbox: Bbox;
+  contentType: string;
+  image: string;
   from: string;
   to: string;
 };
@@ -206,6 +215,21 @@ export function createCopernicusService(
       return credentials ? { settings, credentials } : null;
     },
 
+    async backgroundImage(
+      runtime: ProcessRuntime,
+      bbox: Bbox,
+      now: Date = new Date(),
+    ): Promise<BackgroundImage> {
+      const { request, timeRange } = buildBackgroundRequest(runtime.settings, bbox, now);
+      const result = await client.process(runtime.settings, runtime.credentials, request, "image/jpeg");
+      return {
+        bbox,
+        contentType: result.contentType,
+        image: result.bytes.toString("base64"),
+        from: timeRange.from,
+        to: timeRange.to,
+      };
+    },
     async analyse(
       runtime: ProcessRuntime,
       plots: PlotInput[],

@@ -63,7 +63,7 @@ export function plotDetailJson(row: PlotRow) {
 }
 
 // Plots are duplicates when another plot of the organization covers at least 90 % of the smaller one.
-export async function listPlots(client: PoolClient, organizationId: string) {
+export async function listPlots(client: PoolClient, organizationId: string, plotId: string | null = null) {
     const rows = await queryMany<PlotRow>(client, `
     SELECT p.id, p.supplier_id, s.name AS supplier_name, p.producer, p.farm_name, p.area_ha,
            p.geofence_status, p.local_geofence_result, p.revision, p.captured_at, p.source_updated_at,
@@ -88,9 +88,9 @@ export async function listPlots(client: PoolClient, organizationId: string) {
                 OR r.metadata->'results' @> jsonb_build_array(jsonb_build_object('plotId', p.id::text)))
          ORDER BY r.updated_at DESC LIMIT 1
       ) eo ON true
-     WHERE p.organization_id = $1
+     WHERE p.organization_id = $1 AND ($2::uuid IS NULL OR p.id = $2)
      ORDER BY p.source_updated_at DESC, p.id
      LIMIT 500
-  `, [organizationId]);
+  `, [organizationId, plotId]);
     return rows.map(plotDetailJson);
 }

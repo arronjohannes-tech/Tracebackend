@@ -58,7 +58,7 @@ The production environment requires:
 - `TRACEHUB_BASE_URL`: public HTTPS origin of the Tracehub frontend (registration link)
 - `RESEND_API_KEY` and `INVITATION_FROM_EMAIL`: Resend API key and verified sender address for transactional email (supplier invitations and password resets)
 
-Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql`, `007_copernicus_process.sql` and `008_plot_corrections.sql` with `npm run migrate` before deploying
+Apply migrations `005_supplier_invitations.sql`, `006_shipments.sql`, `007_copernicus_process.sql`, `008_plot_corrections.sql` and `014_plot_geometry_versions.sql` with `npm run migrate` before deploying
 the invitation endpoints. The invitation endpoint returns `MAIL_NOT_CONFIGURED`
 until both mail settings are present. Invitations expire after seven days; only
 token hashes are stored, and a link can be used once. The registration page is
@@ -203,6 +203,9 @@ production and does not validate the full PostGIS schema.
 | GET/POST | `/api/v1/shipments` | List or create shipments; create needs `system_admin`, `org_admin` or `reviewer` |
 | GET/PATCH/DELETE | `/api/v1/shipments/:id` | Show, partially update (reviewer and up) or delete (administrators only) a shipment |
 | GET | `/api/v1/plots` | Plots with GeoJSON polygon, centroid and computed validation (geofence, plausible area, self-intersection, duplicate, EO analysis) plus the number of open corrections |
+| GET | `/api/v1/plots/satellite-background?bbox=west,south,east,north` | Unclipped true-colour Sentinel-2 image (Copernicus Process API) for a bounding box of at most 0.1°, as `{bbox,contentType,image(base64),from,to}`. Needs the organization's Copernicus configuration (`409 SATELLITE_NOT_CONFIGURED` otherwise); results are cached in the object store for one week per bbox |
+| GET | `/api/v1/plots/:id/versions` | All stored GeoJSON versions of a plot (newest first); the captured geometry is always listed as the current version if it was never edited in Tracehub |
+| PUT | `/api/v1/plots/:id/geometry` | `{polygon,baseRevision,note?}` (writers only): stores the manually adjusted polygon as a new version, raises `plots.revision`, re-evaluates the geofence, recomputes `area_ha`, moves matching GPS track points and queues a sync change so the mobile app pulls it. `409 PLOT_REVISION_CONFLICT` when the plot changed meanwhile, `422 INVALID_GEOMETRY` for self-intersecting polygons |
 | GET/POST | `/api/v1/plot-corrections` | List (`?status=&plotId=`) or create correction requests; create needs `system_admin`, `org_admin` or `reviewer`. Body: `{scope:"plot",plotId}`, `{scope:"group",groupType:"supplier"\|"producer",groupKey}` or `{scope:"all"}`, plus `category` and `message` |
 | GET/PATCH | `/api/v1/plot-corrections/:id` | Show a request or close it as a whole (`{status:"resolved"\|"cancelled",note?}`) |
 | PATCH | `/api/v1/plot-corrections/:id/plots/:plotId` | Close the correction of a single plot; the request closes automatically once no plot is open |

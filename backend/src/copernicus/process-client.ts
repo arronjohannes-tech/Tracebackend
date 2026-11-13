@@ -158,6 +158,37 @@ export function buildProcessRequest(
   };
 }
 
+export const BACKGROUND_LONGEST_SIDE = 1024;
+const BACKGROUND_MIN_LOOKBACK_DAYS = 60;
+
+// Unclipped true-colour Sentinel-2 view of a bounding box, independent of the analysis preset.
+export function buildBackgroundRequest(settings: ProcessSettings, bbox: Bbox, now: Date = new Date()) {
+  const optical: ProcessSettings = {
+    ...settings,
+    dataset: "sentinel-2-l2a",
+    preset: "true_color",
+    mosaickingOrder: "leastCC",
+    lookbackDays: Math.max(settings.lookbackDays, BACKGROUND_MIN_LOOKBACK_DAYS),
+    s2: { ...settings.s2, upsampling: "BICUBIC", downsampling: "BICUBIC" },
+    output: { ...settings.output, format: "image/jpeg", jpegQuality: 85 },
+  };
+  const timeRange = {
+    from: new Date(now.getTime() - optical.lookbackDays * 86_400_000).toISOString(),
+    to: now.toISOString(),
+  };
+  const request = {
+    input: {
+      bounds: { bbox, properties: { crs: CRS84 } },
+      data: [dataEntry(optical, timeRange)],
+    },
+    output: {
+      ...outputSize(bbox, BACKGROUND_LONGEST_SIDE),
+      responses: [{ identifier: "default", format: { type: "image/jpeg", quality: 85 } }],
+    },
+    evalscript: buildEvalscript(optical),
+  };
+  return { request, timeRange };
+}
 export const extensionFor = (format: OutputFormat): string =>
   format === "image/jpeg" ? "jpg" : format === "image/tiff" ? "tif" : "png";
 

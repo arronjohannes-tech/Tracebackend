@@ -3191,3 +3191,106 @@ td small.plot-updated {
 .registration-dialog-content .access-form { margin-top: 1rem; }
 .registration-dialog-content .access-form[hidden] { display: none; }
 [hidden] { display: none !important; }
+/* satellite background and manual position editing */
+.geo-image {
+  pointer-events: none;
+}
+
+.geo-map.has-image .geo-plot path {
+  fill-opacity: 0.28;
+  stroke-width: 3;
+}
+
+.geo-map.has-image .geo-plot.fail path {
+  fill: rgba(255, 190, 90, 0.9);
+}
+
+.geo-ghost {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-dasharray: 8 6;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.geo-plot.editing path {
+  cursor: move;
+  touch-action: none;
+}
+
+.geo-handle {
+  fill: #ffffff;
+  stroke: var(--forest);
+  stroke-width: 4;
+  cursor: grab;
+  touch-action: none;
+}
+
+.geo-handle:hover,
+.geo-handle:focus-visible {
+  fill: var(--lime);
+  outline: none;
+}
+
+.map-placeholder.is-editing {
+  cursor: default;
+  touch-action: none;
+  user-select: none;
+}
+
+.map-attribution {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 100px);
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(20, 30, 28, 0.72);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.map-attribution.failed,
+.map-attribution.unconfigured,
+.map-attribution.tooLarge {
+  color: #ffd08a;
+}
+
+.map-attribution .link-button {
+  color: #ffffff;
+}
+
+.geo-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.geo-editor p {
+  margin: 0;
+}
+
+.geo-note {
+  display: grid;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.geo-note input {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+}
+
+.table-note {
+  margin: 0;
+  padding: 0 26px 6px;
+  font-size: 0.78rem;
+}

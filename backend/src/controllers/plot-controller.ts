@@ -9,6 +9,12 @@ import {
     correctionListQuery,
     createPlotCorrectionService,
 } from "../services/plot-correction-service.js";
+import { createPlotGeometryService, geometryUpdateSchema } from "../services/plot-geometry-service.js";
+import {
+    backgroundQuerySchema,
+    createSatelliteBackgroundService,
+    parseBackgroundBbox,
+} from "../services/satellite-background-service.js";
 
 const idParams = z.object({ id: uuidSchema });
 const itemParams = z.object({ id: uuidSchema, plotId: uuidSchema });
@@ -20,15 +26,39 @@ const queryWithoutOrganization = (query: unknown) => {
 export async function registerPlotRoutes(
     app: FastifyInstance,
     pool: Pool,
-    _config: AppConfig,
+    config: AppConfig,
     authenticate: (request: FastifyRequest) => Promise<void>,
 ): Promise<void> {
     const service = createPlotCorrectionService(pool);
+    const geometryService = createPlotGeometryService(pool);
+    const backgroundService = createSatelliteBackgroundService(pool, config);
     const secured = { preHandler: authenticate };
     const writers = ["system_admin", "org_admin", "reviewer"] as const;
 
     app.get("/api/v1/plots", secured, async (request, reply) =>
         sendData(reply, await service.listPlots(authOf(request), organizationFromRequest(request))));
+    app.get("/api/v1/plots/satellite-background", {
+        preHandler: authenticate,
+        config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+    }, async (request, reply) => {
+        const { bbox } = parse(backgroundQuerySchema, queryWithoutOrganization(request.query));
+        const image = await backgroundService.get(
+            authOf(request), organizationFromRequest(request), parseBackgroundBbox(bbox));
+        reply.header("Cache-Control", "private, max-age=3600");
+        return sendData(reply, image);
+    });
+
+    app.get("/api/v1/plots/:id/versions", secured, async (request, reply) => {
+        const { id } = parse(idParams, request.params);
+        return sendData(reply, await geometryService.versions(authOf(request), organizationFromRequest(request), id));
+    });
+
+    app.put("/api/v1/plots/:id/geometry", secured, async (request, reply) => {
+        const auth = requireRoles(request, writers);
+        const { id } = parse(idParams, request.params);
+        const body = parse(geometryUpdateSchema, request.body);
+        return sendData(reply, await geometryService.update(auth, request, organizationFromRequest(request), id, body));
+    });
 
     app.get("/api/v1/plot-corrections", secured, async (request, reply) => {
         const filter = parse(correctionListQuery, queryWithoutOrganization(request.query));

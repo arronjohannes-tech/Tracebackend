@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildMapSvg, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, plotsForPolygonView, ringPath,
+  backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, plotsForPolygonView, ringPath, geoJsonFeature, maxDisplacementMetres, metresToDegrees, moveVertex, ringIsSimple, sameRing, translateRing,
 } from "../src/plot-map.mjs";
 
 const ok = { state: "ok" };
@@ -90,4 +90,93 @@ test("groups are built per supplier id or producer name and counted", () => {
     [["Abebe", 1], ["Chala", 2]]);
   assert.deepEqual(plotsInGroup(plots, "producer", "Chala").map((item) => item.id), ["b", "c"]);
   assert.deepEqual(plotsInGroup(plots, "supplier", "s1").map((item) => item.id), ["a", "b"]);
+});
+
+test("the background bbox surrounds the plots with context, is stable and contains them", () => {
+  const plots = [plot("a")];
+  const bbox = backgroundBbox(plots);
+  assert.ok(bbox[0] < 36.8 && bbox[2] > 36.801 && bbox[1] < 7.6 && bbox[3] > 7.601);
+  assert.equal(bboxKey(bbox), bboxKey(backgroundBbox(plots)));
+  assert.ok(bboxContains(bbox, plots));
+  assert.ok(!bboxContains(bbox, [plot("b", { polygon: square(37.5, 7.6) })]));
+  assert.ok(!bboxTooLarge(bbox));
+  assert.ok(bboxTooLarge(backgroundBbox([plot("a"), plot("b", { polygon: square(37.5, 7.6) })])));
+  assert.equal(backgroundBbox([{ polygon: null }]), null);
+  for (const value of bbox) assert.equal(value, Number(value.toFixed(5)));
+});
+
+test("a bbox projection fills the view exactly and unproject inverts project", () => {
+  const bbox = backgroundBbox([plot("a")]);
+  const projection = createProjection([], bbox);
+  const [x0, y0] = projection.project([bbox[0], bbox[3]]);
+  const [x1, y1] = projection.project([bbox[2], bbox[1]]);
+  assert.ok(Math.abs(x0) < 1e-6 && Math.abs(y0) < 1e-6);
+  assert.ok(Math.abs(x1 - projection.width) < 1e-6 && Math.abs(y1 - projection.height) < 1e-6);
+  assert.ok(projection.width <= 1000 && projection.height <= 700);
+  const [lng, lat] = projection.unproject(projection.project([36.8005, 7.6004]));
+  assert.ok(Math.abs(lng - 36.8005) < 1e-9 && Math.abs(lat - 7.6004) < 1e-9);
+});
+
+test("the satellite image is drawn across the bbox below the polygon and handles appear when editing", () => {
+  const item = plot("a");
+  const bbox = backgroundBbox([item]);
+  const svg = buildMapSvg([item], {
+    bbox, background: { href: "data:image/jpeg;base64,AAAA" }, editing: true, ghost: item.polygon.coordinates[0],
+  }, escape);
+  assert.ok(svg.includes("has-image"));
+  assert.ok(svg.indexOf("<image") < svg.indexOf("geo-plot"));
+  assert.ok(svg.includes("data:image/jpeg;base64,AAAA"));
+  assert.equal((svg.match(/data-vertex=/g) ?? []).length, 4);
+  assert.ok(svg.includes("data-drag-all"));
+  assert.ok(svg.includes("geo-ghost"));
+  assert.ok(!buildMapSvg([item], { bbox }, escape).includes("<image"));
+});
+
+test("vertices and whole rings move inside the bbox and the closing position follows the first one", () => {
+  const ring = square(36.8, 7.6).coordinates[0];
+  const bbox = [36.7995, 7.5995, 36.8015, 7.6015];
+  const moved = moveVertex(ring, 0, [36.8002, 7.6002]);
+  assert.deepEqual(moved[0], moved[4]);
+  assert.deepEqual(moved[1], ring[1]);
+  assert.deepEqual(ring[0], [36.8, 7.6]);
+  assert.deepEqual(clampToBbox([37, 7], bbox), [36.8015, 7.5995]);
+  const shifted = translateRing(ring, 0.0001, -0.0001, bbox);
+  assert.equal(shifted[0][0], 36.8001);
+  assert.equal(shifted[0][1], 7.5999);
+  assert.deepEqual(shifted[0], shifted[4]);
+  const clamped = translateRing(ring, 1, 1, bbox);
+  assert.equal(Math.max(...clamped.map(([lng]) => lng)), 36.8015);
+  assert.equal(Math.max(...clamped.map(([, lat]) => lat)), 7.6015);
+  assert.ok(sameRing(ring, ring.map((point) => [...point])));
+  assert.ok(!sameRing(ring, moved));
+});
+
+test("self-intersecting rings are detected, simple ones and shared corners are not", () => {
+  assert.equal(ringIsSimple(square(36.8, 7.6).coordinates[0]), true);
+  const bowTie = [[0, 0], [1, 1], [1, 0], [0, 1], [0, 0]];
+  assert.equal(ringIsSimple(bowTie), false);
+  assert.equal(ringIsSimple([[0, 0], [2, 0], [1, 1], [0, 0]]), true);
+  assert.equal(ringIsSimple([[0, 0], [4, 0], [4, 4], [2, 1], [0, 4], [0, 0]]), true);
+});
+
+test("metric helpers convert offsets and measure the largest vertex displacement", () => {
+  const [dLng, dLat] = metresToDegrees(0, 111.32, 111.32);
+  assert.ok(Math.abs(dLng - 0.001) < 1e-9 && Math.abs(dLat - 0.001) < 1e-9);
+  const before = square(36.8, 7.6).coordinates[0];
+  const after = moveVertex(before, 2, [before[2][0], before[2][1] + 0.0001]);
+  const metres = maxDisplacementMetres(before, after);
+  assert.ok(metres > 11 && metres < 11.3, String(metres));
+  assert.equal(maxDisplacementMetres(before, before.slice(1)), 0);
+});
+
+test("a stored version becomes a GeoJSON feature", () => {
+  const feature = geoJsonFeature(plot("a"), {
+    version: 3, source: "tracehub", areaHa: "1.0", createdAt: "2026-11-01T00:00:00Z", createdBy: "Reviewer",
+    note: "", polygon: square(36.8, 7.6),
+  });
+  assert.equal(feature.type, "Feature");
+  assert.equal(feature.geometry.type, "Polygon");
+  assert.equal(feature.properties.version, 3);
+  assert.equal(feature.properties.createdBy, "Reviewer");
+  assert.ok(!("note" in feature.properties));
 });

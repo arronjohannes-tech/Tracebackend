@@ -7,8 +7,10 @@ import {
 import { format } from "./src/i18n-prod.mjs?v=2";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
-  buildMapSvg, groupOptions, plotTone, plotsInGroup, plotsForPolygonView,
-} from "./src/plot-map.mjs?v=1";
+  backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection,
+  geoJsonFeature, groupOptions, maxDisplacementMetres, metresToDegrees, moveVertex, outerRing, plotTone,
+  plotsInGroup, plotsForPolygonView, ringIsSimple, ringPath, sameRing, translateRing,
+} from "./src/plot-map.mjs?v=2";
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 import { initAccessManagement } from "./src/access-management.mjs?v=1";
 import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
@@ -52,6 +54,12 @@ const state = {
   corrections: [],
   plotTab: "all",
   selectedPlotIds: new Set(),
+  backgrounds: new Map(),
+  plotBboxes: new Map(),
+  plotVersions: new Map(),
+  edit: null,
+  dragging: false,
+  redrawAfterDrag: false,
   satelliteBusy: false,
   satelliteLoading: new Set(),
   satelliteStatusLoaded: new Set(),
@@ -238,6 +246,11 @@ function showLogin() {
   state.corrections = [];
   state.plotTab = "all";
   state.selectedPlotIds.clear();
+  state.backgrounds.clear();
+  state.plotBboxes.clear();
+  state.plotVersions.clear();
+  state.edit = null;
+  state.dragging = false;
   state.satelliteBusy = false;
   state.satelliteLoading.clear();
   state.satelliteStatusLoaded.clear();
@@ -442,7 +455,325 @@ const scopeText = (correction) => {
   return t("prod.corr.scope.all");
 };
 
+/* ---------- satellite background ---------- */
+
+// The map area of a plot stays fixed once chosen, so the image does not jump while its points are moved.
+function plotBbox(plot) {
+  const stored = state.plotBboxes.get(plot.id);
+  if (stored && bboxContains(stored, [plot])) return stored;
+  const bbox = backgroundBbox([plot]);
+  if (bbox) state.plotBboxes.set(plot.id, bbox);
+  return bbox;
+}
+
+function backgroundEntry(bbox) {
+  if (!bbox) return null;
+  if (bboxTooLarge(bbox)) return { status: "tooLarge" };
+  const key = bboxKey(bbox);
+  if (!state.backgrounds.has(key)) void loadBackground(bbox);
+  return state.backgrounds.get(key);
+}
+
+async function loadBackground(bbox) {
+  const key = bboxKey(bbox);
+  const user = state.user;
+  state.backgrounds.set(key, { status: "loading" });
+  try {
+    const data = await api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}`);
+    if (state.user !== user) return;
+    if (!/^image\/(jpeg|png)$/.test(data?.contentType ?? "")) throw new Error("Unexpected image type.");
+    state.backgrounds.set(key, {
+      status: "ready", href: `data:${data.contentType};base64,${data.image}`, from: data.from, to: data.to,
+    });
+  } catch (error) {
+    if (state.user !== user) return;
+    if (error.status === 401) { showLogin(); return; }
+    state.backgrounds.set(key, {
+      status: error.code === "SATELLITE_NOT_CONFIGURED" ? "unconfigured" : "failed",
+      message: error.message,
+    });
+  }
+  redrawPlots();
+}
+
+// A late answer must not rebuild the map while a point is being dragged.
+function redrawPlots() {
+  if (state.dragging) { state.redrawAfterDrag = true; return; }
+  if (state.dashboard) renderPlots();
+}
+
+function backgroundChip(entry, bbox) {
+  if (!entry) return "";
+  const text = {
+    loading: t("prod.bg.loading"),
+    ready: t("prod.bg.credit", { from: formatDate(entry.from), to: formatDate(entry.to) }),
+    unconfigured: t("prod.bg.unconfigured"),
+    tooLarge: t("prod.bg.tooLarge"),
+    failed: t("prod.bg.failed"),
+  }[entry.status];
+  const retry = entry.status === "failed"
+    ? ` <button type="button" class="link-button" data-bg-retry="${escapeHtml(bboxKey(bbox))}">${escapeHtml(t("prod.bg.retry"))}</button>`
+    : "";
+  return `<div class="map-attribution ${entry.status}" role="status" title="${escapeHtml(entry.message ?? "")}">${escapeHtml(text)}${retry}</div>`;
+}
+
+/* ---------- GeoJSON versions ---------- */
+
+function versionsFor(plot) {
+  const entry = state.plotVersions.get(plot.id);
+  if (entry?.status === "ready" && entry.items[0]?.version !== plot.revision) state.plotVersions.delete(plot.id);
+  if (!state.plotVersions.has(plot.id)) void loadVersions(plot.id);
+  return state.plotVersions.get(plot.id);
+}
+
+async function loadVersions(plotId) {
+  const user = state.user;
+  state.plotVersions.set(plotId, { status: "loading" });
+  try {
+    const items = await api(`/api/v1/plots/${encodeURIComponent(plotId)}/versions`);
+    if (state.user !== user) return;
+    state.plotVersions.set(plotId, { status: "ready", items });
+  } catch (error) {
+    if (state.user !== user) return;
+    if (error.status === 401) { showLogin(); return; }
+    state.plotVersions.set(plotId, { status: "failed" });
+  }
+  redrawPlots();
+}
+
+function versionsPanel(plot) {
+  const entry = versionsFor(plot);
+  const rows = entry?.status === "ready" ? entry.items.map((item) => `
+        <tr>
+          <td><strong>${escapeHtml(String(item.version))}</strong>${item.version === plot.revision
+            ? ` <span class="badge success">${escapeHtml(t("prod.ver.current"))}</span>` : ""}</td>
+          <td>${escapeHtml(labelFor("prod.ver.source", item.source))}</td>
+          <td>${escapeHtml(formatDateTime(item.createdAt))}</td>
+          <td>${escapeHtml(item.createdBy ?? "—")}</td>
+          <td>${formatNumber(item.areaHa, 4)}</td>
+          <td class="cell-message">${escapeHtml(item.note || "—")}</td>
+          <td><button type="button" class="secondary-button" data-geojson-version="${escapeHtml(String(item.version))}"
+            data-plot-id="${escapeHtml(plot.id)}">${escapeHtml(t("prod.ver.download"))}</button></td>
+        </tr>`).join("") : "";
+  const status = entry?.status === "failed" ? emptyRow(7, "prod.ver.failed")
+    : entry?.status === "ready" ? rows : emptyRow(7, "prod.ver.loading");
+  return `
+    <article class="panel table-panel">
+      <div class="panel-header table-heading"><h3>${escapeHtml(t("prod.ver.title"))}</h3></div>
+      <p class="muted table-note">${escapeHtml(t("prod.ver.hint"))}</p>
+      <table>
+        <thead><tr>
+          <th>${escapeHtml(t("prod.ver.version"))}</th>
+          <th>${escapeHtml(t("prod.ver.source"))}</th>
+          <th>${escapeHtml(t("prod.common.created"))}</th>
+          <th>${escapeHtml(t("prod.ver.by"))}</th>
+          <th>${escapeHtml(t("prod.plot.area"))}</th>
+          <th>${escapeHtml(t("prod.ver.note"))}</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${status}</tbody>
+      </table>
+    </article>`;
+}
+
+function downloadVersion(plotId, versionNumber) {
+  const plot = state.plots.find((item) => item.id === plotId);
+  const version = state.plotVersions.get(plotId)?.items?.find((item) => item.version === versionNumber);
+  if (!plot || !version) return;
+  const blob = new Blob([JSON.stringify(geoJsonFeature(plot, version), null, 2)], { type: "application/geo+json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `plot-${shortId(plot.id)}-v${version.version}.geojson`;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------- manual position editing ---------- */
+
+const editIsDirty = (edit) => !sameRing(edit.ring, edit.original);
+
+// Returns false when the user wants to keep editing.
+function discardEdit() {
+  const edit = state.edit;
+  if (!edit) return true;
+  if (editIsDirty(edit) && !window.confirm(t("prod.geo.discard"))) return false;
+  state.edit = null;
+  return true;
+}
+
+function startEdit(plotId) {
+  const plot = state.plots.find((item) => item.id === plotId);
+  const ring = outerRing(plot);
+  const bbox = plot ? plotBbox(plot) : null;
+  if (!plot || !ring || !bbox || !canWrite()) return;
+  if (state.edit && !discardEdit()) return;
+  state.edit = {
+    plotId, baseRevision: plot.revision, bbox, note: "", saving: false, error: "", drag: null,
+    original: ring.map((point) => [...point]), ring: ring.map((point) => [...point]),
+  };
+  if (state.plotTab !== plotId) openPlotTab(plotId);
+  else renderPlots();
+}
+
+const editProjection = () => createProjection([], state.edit.bbox);
+
+function svgPoint(event) {
+  const matrix = $("#plot-map .geo-map")?.getScreenCTM();
+  if (!matrix) return null;
+  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  return [point.x, point.y];
+}
+
+function updateEditorUi() {
+  const edit = state.edit;
+  if (!edit || !$("#geo-moved")) return;
+  const dirty = editIsDirty(edit);
+  const simple = ringIsSimple(edit.ring);
+  $("#geo-moved").textContent = dirty
+    ? t("prod.geo.moved", { m: formatNumber(maxDisplacementMetres(edit.original, edit.ring), 1) })
+    : t("prod.geo.unchanged");
+  $("#geo-error").textContent = edit.error || (simple ? "" : t("prod.geo.selfIntersect"));
+  $("#geo-save").disabled = !dirty || !simple || edit.saving;
+  $("#geo-reset").disabled = !dirty || edit.saving;
+  $("#geo-cancel").disabled = edit.saving;
+}
+
+// Updates the existing SVG nodes so that a running drag is never interrupted by a re-render.
+function syncEditGeometry() {
+  const edit = state.edit;
+  const svg = $("#plot-map .geo-map");
+  if (!edit || !svg) return;
+  const { project } = editProjection();
+  svg.querySelector(".geo-plot path")?.setAttribute("d", ringPath(edit.ring, project));
+  for (const handle of $$(".geo-handle", svg)) {
+    const [x, y] = project(edit.ring[Number(handle.dataset.vertex)]);
+    handle.setAttribute("cx", x.toFixed(1));
+    handle.setAttribute("cy", y.toFixed(1));
+  }
+  updateEditorUi();
+}
+
+function beginDrag(event) {
+  const edit = state.edit;
+  if (!edit || edit.saving) return;
+  const handle = event.target.closest?.("[data-vertex]");
+  const body = handle ? null : event.target.closest?.("[data-drag-all]");
+  const start = handle || body ? svgPoint(event) : null;
+  if (!start) return;
+  event.preventDefault();
+  edit.drag = handle
+    ? { kind: "vertex", index: Number(handle.dataset.vertex) }
+    : { kind: "all", origin: editProjection().unproject(start), ring: edit.ring };
+  state.dragging = true;
+  event.target.setPointerCapture?.(event.pointerId);
+}
+
+function moveDrag(event) {
+  const edit = state.edit;
+  if (!edit?.drag) return;
+  const point = svgPoint(event);
+  if (!point) return;
+  const [lng, lat] = editProjection().unproject(point);
+  edit.error = "";
+  edit.ring = edit.drag.kind === "vertex"
+    ? moveVertex(edit.ring, edit.drag.index, clampToBbox([lng, lat], edit.bbox))
+    : translateRing(edit.drag.ring, lng - edit.drag.origin[0], lat - edit.drag.origin[1], edit.bbox);
+  syncEditGeometry();
+}
+
+function endDrag() {
+  if (state.edit) state.edit.drag = null;
+  state.dragging = false;
+  if (state.redrawAfterDrag) {
+    state.redrawAfterDrag = false;
+    redrawPlots();
+  }
+}
+
+function nudgeVertex(event) {
+  const edit = state.edit;
+  const handle = event.target.closest?.("[data-vertex]");
+  const arrows = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+  if (!edit || edit.saving || !handle || !arrows[event.key]) return false;
+  event.preventDefault();
+  const index = Number(handle.dataset.vertex);
+  const [lng, lat] = edit.ring[index];
+  const metres = event.shiftKey ? 10 : 1;
+  const [dLng, dLat] = metresToDegrees(lat, arrows[event.key][0] * metres, arrows[event.key][1] * metres);
+  edit.error = "";
+  edit.ring = moveVertex(edit.ring, index, clampToBbox([lng + dLng, lat + dLat], edit.bbox));
+  syncEditGeometry();
+  return true;
+}
+
+function resetEdit() {
+  const edit = state.edit;
+  if (!edit || edit.saving) return;
+  edit.ring = edit.original.map((point) => [...point]);
+  edit.error = "";
+  syncEditGeometry();
+}
+
+function cancelEdit() {
+  if (!state.edit || state.edit.saving || !discardEdit()) return;
+  renderPlots();
+}
+
+async function saveEdit() {
+  const edit = state.edit;
+  if (!edit || edit.saving || !editIsDirty(edit) || !ringIsSimple(edit.ring)) return;
+  edit.saving = true;
+  edit.error = "";
+  updateEditorUi();
+  $("#geo-error").textContent = t("prod.geo.saving");
+  try {
+    const result = await api(`/api/v1/plots/${encodeURIComponent(edit.plotId)}/geometry`, {
+      method: "PUT",
+      body: {
+        polygon: { type: "Polygon", coordinates: [edit.ring] },
+        baseRevision: edit.baseRevision,
+        note: edit.note.trim(),
+      },
+    });
+    state.edit = null;
+    state.plotVersions.delete(edit.plotId);
+    try {
+      await refreshWorkspace();
+    } catch (error) {
+      showToast(describeError(error, "prod.common.loadFailed"));
+    }
+    showToast(t("prod.geo.saved", { n: result.version }));
+  } catch (error) {
+    if (error.status === 401) { showLogin(); return; }
+    edit.saving = false;
+    edit.error = error.code === "PLOT_REVISION_CONFLICT" ? t("prod.geo.conflict")
+      : error.code === "INVALID_GEOMETRY" ? t("prod.geo.selfIntersect")
+        : describeError(error, "prod.geo.saveFailed");
+    updateEditorUi();
+  }
+}
+
+function editorPanel(edit) {
+  return `
+    <div class="geo-editor">
+      <p class="muted">${escapeHtml(t("prod.geo.editHint"))}</p>
+      <p id="geo-moved" role="status">${escapeHtml(t("prod.geo.unchanged"))}</p>
+      <label class="geo-note"><span>${escapeHtml(t("prod.geo.noteLabel"))}</span>
+        <input id="geo-note" maxlength="500" value="${escapeHtml(edit.note)}"></label>
+      <p class="form-status" id="geo-error" role="alert"></p>
+      <div class="invite-actions">
+        <button type="button" class="secondary-button" id="geo-cancel" data-geo-cancel>${escapeHtml(t("prod.common.cancel"))}</button>
+        <button type="button" class="secondary-button" id="geo-reset" data-geo-reset>${escapeHtml(t("prod.geo.reset"))}</button>
+        <button type="button" class="primary-button" id="geo-save" data-geo-save>${escapeHtml(t("prod.geo.save"))}</button>
+      </div>
+    </div>`;
+}
 function selectPlotTab(tab) {
+  if (state.edit && state.edit.plotId !== tab && !discardEdit()) return;
   state.plotTab = tab;
   renderPlots();
 }
@@ -474,6 +805,7 @@ function renderPlotTabs() {
 
 function renderPlots() {
   if (!state.dashboard) return;
+  if (state.edit && !state.plots.some((item) => item.id === state.edit.plotId)) state.edit = null;
   const plot = state.plots.find((item) => item.id === state.plotTab);
   if (!plot && (state.plotTab !== "selection" || !state.plots.length)) state.plotTab = "all";
   const polygonView = state.plotTab !== "all";
@@ -653,8 +985,15 @@ function renderPlotsOverview() {
     : "";
   const legend = ["ok", "fail", "pending"].map((tone) =>
     `<span><i class="${tone}"></i>${escapeHtml(t(`prod.pv.legend.${tone}`))}</span>`).join("");
+  // The list view hides this map; only the visible selection map may trigger a satellite request.
+  const area = state.plotTab === "selection" ? backgroundBbox(plots) : null;
+  const background = area ? backgroundEntry(area) : null;
+  const fitted = area && !bboxTooLarge(area) ? area : null;
   $("#plots-map").innerHTML = `<span class="terrain terrain-one"></span><span class="terrain terrain-two"></span>
-    ${buildMapSvg(plots, { interactive: true, numbers: "index" }, escapeHtml)}${message}
+    ${buildMapSvg(plots, {
+      interactive: true, numbers: "index", bbox: fitted,
+      background: background?.status === "ready" ? background : null,
+    }, escapeHtml)}${message}${backgroundChip(background, area)}
     <div class="map-key"><strong>${escapeHtml(t("prod.pv.count", { n: formatNumber(plots.length, 0) }))}</strong>${legend}</div>`;
 
   const checkRow = (tone, text) =>
@@ -672,7 +1011,9 @@ function renderPlotsOverview() {
     || !CORRECTION_GROUP_TYPES.some((type) => groupOptions(plots, type).length);
   $("#request-selected-buttons").innerHTML = canWrite() ? plots.map((plot) =>
     `<button class="secondary-button" type="button" data-correction-plot="${escapeHtml(plot.id)}">
-      ${escapeHtml(t("plot.requestCorrection"))} · ${escapeHtml(plot.farmName)}</button>`).join("") : "";
+      ${escapeHtml(t("plot.requestCorrection"))} · ${escapeHtml(plot.farmName)}</button>
+    <button class="secondary-button" type="button" data-plot-edit="${escapeHtml(plot.id)}">
+      ${escapeHtml(t("prod.geo.edit"))} · ${escapeHtml(plot.farmName)}</button>`).join("") : "";
 
   $("#plots-body").innerHTML = tableRows.length
     ? tableRows.map((plot) => `
@@ -746,12 +1087,21 @@ function renderPlotPane(plot) {
           <td>${actions(request, entry)}</td>
         </tr>`;
   }).join("");
+  const editing = state.edit?.plotId === plot.id ? state.edit : null;
+  const shown = editing ? { ...plot, polygon: { type: "Polygon", coordinates: [editing.ring] } } : plot;
+  const bbox = plotBbox(plot);
+  const background = backgroundEntry(bbox);
   $("#plot-pane").innerHTML = `
     <div class="map-layout">
       <article class="map-card">
-        <div class="map-placeholder" role="img" aria-label="${escapeHtml(t("prod.pv.mapOne", { name: plot.farmName }))}">
+        <div class="map-placeholder${editing ? " is-editing" : ""}" id="plot-map" role="group"
+          aria-label="${escapeHtml(t("prod.pv.mapOne", { name: plot.farmName }))}">
           <span class="terrain terrain-one"></span><span class="terrain terrain-two"></span>
-          ${buildMapSvg([plot], { vertices: true }, escapeHtml)}
+          ${buildMapSvg([shown], {
+            vertices: true, bbox, editing: Boolean(editing), ghost: editing?.original ?? null,
+            background: background?.status === "ready" ? background : null,
+          }, escapeHtml)}
+          ${backgroundChip(background, bbox)}
           <div class="map-key"><i class="${tone}"></i> ${escapeHtml(key)}</div>
         </div>
       </article>
@@ -759,8 +1109,12 @@ function renderPlotPane(plot) {
         <p class="eyebrow">${escapeHtml(t("plot.validationResult"))}</p>
         <h3>${escapeHtml(plot.farmName)}</h3>
         <div class="validation-list">${validationRows(plot)}</div>
-        ${canWrite() ? `<button class="secondary-button" type="button" data-correction-plot="${escapeHtml(plot.id)}">
-          <span>${escapeHtml(t("plot.requestCorrection"))}</span></button>` : ""}
+        ${canWrite() ? `<div class="stacked-actions">
+          <button class="secondary-button" type="button" data-correction-plot="${escapeHtml(plot.id)}">
+            <span>${escapeHtml(t("plot.requestCorrection"))}</span></button>
+          ${editing ? "" : `<button class="secondary-button" type="button" data-plot-edit="${escapeHtml(plot.id)}">
+            <span>${escapeHtml(t("prod.geo.edit"))}</span></button>`}</div>` : ""}
+        ${editing ? editorPanel(editing) : ""}
       </article>
     </div>
     <article class="panel">
@@ -778,6 +1132,7 @@ function renderPlotPane(plot) {
         [t("prod.common.id"), plot.id],
       ])}</dl>
     </article>
+    ${versionsPanel(plot)}
     <article class="panel table-panel">
       <div class="panel-header table-heading"><h3>${escapeHtml(t("prod.corr.title"))}</h3></div>
       <table>
@@ -792,6 +1147,7 @@ function renderPlotPane(plot) {
         <tbody>${requestRows || emptyRow(6, "prod.corr.emptyPlot")}</tbody>
       </table>
     </article>`;
+  if (editing) updateEditorUi();
 }
 
 function renderShipments() {
@@ -1484,6 +1840,25 @@ document.addEventListener("click", (event) => {
     else logout();
     return;
   }
+  const plotEdit = event.target.closest("[data-plot-edit]");
+  if (plotEdit) {
+    startEdit(plotEdit.dataset.plotEdit);
+    return;
+  }
+  if (event.target.closest("[data-geo-save]")) { void saveEdit(); return; }
+  if (event.target.closest("[data-geo-reset]")) { resetEdit(); return; }
+  if (event.target.closest("[data-geo-cancel]")) { cancelEdit(); return; }
+  const backgroundRetry = event.target.closest("[data-bg-retry]");
+  if (backgroundRetry) {
+    state.backgrounds.delete(backgroundRetry.dataset.bgRetry);
+    redrawPlots();
+    return;
+  }
+  const versionDownload = event.target.closest("[data-geojson-version]");
+  if (versionDownload) {
+    downloadVersion(versionDownload.dataset.plotId, Number(versionDownload.dataset.geojsonVersion));
+    return;
+  }
   const correctionClose = event.target.closest("[data-correction-close]");
   if (correctionClose) {
     const { requestId, plotId, status } = correctionClose.dataset;
@@ -1521,7 +1896,16 @@ document.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("pointerdown", beginDrag);
+document.addEventListener("pointermove", moveDrag);
+document.addEventListener("pointerup", endDrag);
+document.addEventListener("pointercancel", endDrag);
+document.addEventListener("input", (event) => {
+  if (event.target.id === "geo-note" && state.edit) state.edit.note = event.target.value;
+});
+
 document.addEventListener("keydown", (event) => {
+  if (nudgeVertex(event)) return;
   const tabs = event.target.closest?.("#plot-tabs");
   if (tabs && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
     event.preventDefault();
