@@ -8,7 +8,6 @@ import type {
   PullResponse,
   PushResponse,
   Shipment,
-  ShipmentInput,
   Supplier,
 } from "./domain";
 
@@ -270,20 +269,6 @@ export async function getRemoteSuppliers(): Promise<Supplier[]> {
 
 export function getRemoteShipments(): Promise<Shipment[]> {
   return request("/api/v1/shipments");
-}
-
-export function createRemoteShipment(input: ShipmentInput): Promise<Shipment> {
-  return request("/api/v1/shipments", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function updateRemoteShipment(id: string, input: ShipmentInput): Promise<Shipment> {
-  return request(`/api/v1/shipments/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
 }
 
 export function getOrganizationGeofences(): Promise<OrganizationGeofence[]> {

@@ -5,7 +5,7 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 ## Funktionen
 
 - Offline-fähige Lieferanten- und Kaffee-Plot-Erfassung
-- Sendungsverwaltung im Partnerbereich und dauerhafte Sendungszuordnung zu Plots; beim Auswählen einer Sendung wird deren Lieferant übernommen, die Sendungsdaten bleiben in der Plotansicht separat sichtbar
+- Nur lesende Sendungsliste im Partnerbereich und dauerhafte Sendungszuordnung zu Plots; Liste und Auswahl erscheinen nur bei vorhandenen Datenbank-Sendungen. Anlegen und Bearbeiten erfolgen nicht mobil. Beim Auswählen wird der Lieferant übernommen, die Sendungsdaten bleiben in der Plotansicht separat sichtbar
 - E-Mail-/Passwort-Login mit kurzlebigem Access Token, Refresh Token und Organisationsauswahl; Session verschlüsselt in Expo SecureStore
 - echte GeoJSON-Polygone durch mehrere GPS-Punkte sowie JSON-Import und -Bearbeitung, inklusive Bereichs-, Flächen- und Selbstüberschneidungsprüfung
 - GPS-Grenzbegehung mit zeitgestempelten Messpunkten, Genauigkeitswerten, Rücknahme, Polygonabschluss und nativer Kartenansicht; GPS-Aufzeichnungen sind Messdaten und werden nicht automatisch als rechtliche Grenze bestätigt
@@ -49,7 +49,7 @@ Verwendete Endpunkte:
 - `GET /api/v1/geofences`
 - `POST /api/v1/sync/push`
 - `GET /api/v1/sync/pull?cursor=...`
-- `GET|POST /api/v1/shipments`, `GET|PATCH|DELETE /api/v1/shipments/:id`
+- `GET /api/v1/shipments`
 - `POST /api/v1/documents/uploads`
 - `POST /api/v1/documents/uploads/:id/complete`
 - `POST|GET /api/v1/satellite/analyses[/:id]`
@@ -66,8 +66,10 @@ geschützte Request erhält `Authorization: Bearer <accessToken>` und
 ## Registrierung und Erstpasswort-Aktivierung
 
 Android, iOS und Web bieten Registrierung mit Name, E-Mail und Telefonnummer.
-Die durchsuchbare Länderauswahl zeigt Flagge, Namen und Vorwahl. Telefonnummern
-werden mit den vollständigen Metadaten von `libphonenumber-js/max` geprüft,
+Die durchsuchbare Länderauswahl zeigt Flagge, Namen und Vorwahl.
+Die Ländernamen werden über einen gebündelten `Intl.DisplayNames`-Polyfill
+bereitgestellt, wenn die native JavaScript-Laufzeit diese API nicht unterstützt.
+Telefonnummern werden mit den vollständigen Metadaten von `libphonenumber-js/max` geprüft,
 dem gewählten Land zugeordnet und in E.164 normalisiert.
 Die Registrierung erstellt noch keine Sitzung. Die Bestätigung ist neutral,
 unabhängig davon, ob eine Adresse bereits bekannt ist; Freigabe und Rollen-/

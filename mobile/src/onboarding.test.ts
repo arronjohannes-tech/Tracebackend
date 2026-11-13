@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { normalizePhone, parseActivationLink, phoneCountries, searchPhoneCountries } from "./onboarding";
+
+test("registration country choices work without native Intl.DisplayNames", () => {
+  const moduleUrl = new URL("./onboarding.ts", import.meta.url).href;
+  const result = spawnSync(process.execPath, ["--import", "tsx", "-e", `
+    const assert = require("node:assert/strict");
+    delete Intl.DisplayNames;
+    const { phoneCountries } = require(require("node:url").fileURLToPath(${JSON.stringify(moduleUrl)}));
+    for (const language of ["de", "en", "am", "ti"]) {
+      const countries = phoneCountries(language);
+      assert.ok(countries.length > 200);
+      assert.ok(countries.every(country => country.name && country.flag && country.callingCode));
+      assert.ok(countries.some(country => country.code === "DE"));
+    }
+    assert.equal(phoneCountries("de").find(country => country.code === "DE").name, "Deutschland");
+  `], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
 
 test("phone normalization uses full international metadata and the selected country", () => {
   assert.equal(normalizePhone("01512 3456789", "DE"), "+4915123456789");

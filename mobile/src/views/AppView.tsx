@@ -30,10 +30,8 @@ import {
   getOperation,
   getRemoteShipments,
   getRemoteSuppliers,
-  createRemoteShipment,
   registerAccount,
   submitDds,
-  updateRemoteShipment,
   uploadDocument,
   validateDds,
 } from "../api";
@@ -51,8 +49,6 @@ import {
   type Position,
   type PositionGeofenceCheck,
   type Shipment,
-  type ShipmentInput,
-  type ShipmentStatus,
   type Supplier,
   type SyncConflict,
 } from "../domain";
@@ -353,7 +349,6 @@ function SuppliersScreen({
   onSelectSupplier,
   selectedShipmentId,
   onSelectShipment,
-  canManageShipments,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
@@ -365,26 +360,11 @@ function SuppliersScreen({
   onSelectSupplier: (supplierId: string | null) => void;
   selectedShipmentId: string | null;
   onSelectShipment: (shipmentId: string | null) => void;
-  canManageShipments: boolean;
 }) {
   const selectedLocal = state.suppliers.find((item) => item.id === selectedSupplierId);
   const [name, setName] = useState(selectedLocal?.name ?? "");
   const [region, setRegion] = useState(selectedLocal?.region ?? "");
   const [remoteSuppliers, setRemoteSuppliers] = useState<Supplier[]>([]);
-  const [shipmentForm, setShipmentForm] = useState<ShipmentInput>({
-    reference: "",
-    product: "",
-    hsCode: "0901",
-    quantityKg: 0,
-    originCountry: "",
-    originRegion: "",
-    supplierId: null,
-    destination: "",
-    status: "planned",
-    expectedArrival: null,
-    notes: "",
-  });
-  const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
   const remoteOnly = remoteSuppliers.filter(
     (remote) => !state.suppliers.some((local) => local.id === remote.id),
@@ -418,58 +398,6 @@ function SuppliersScreen({
     setRegion("");
     onSelectShipment(null);
     onSelectSupplier(null);
-  }
-
-  function editShipment(shipment: Shipment) {
-    setEditingShipmentId(shipment.id);
-    onSelectShipment(shipment.id);
-    setShipmentForm({
-      reference: shipment.reference,
-      product: shipment.product,
-      hsCode: shipment.hsCode,
-      quantityKg: shipment.quantityKg,
-      originCountry: shipment.originCountry,
-      originRegion: shipment.originRegion,
-      supplierId: shipment.supplierId,
-      destination: shipment.destination,
-      status: shipment.status,
-      expectedArrival: shipment.expectedArrival,
-      notes: shipment.notes,
-    });
-  }
-
-  function resetShipmentForm() {
-    setEditingShipmentId(null);
-    setShipmentForm({
-      reference: "",
-      product: "",
-      hsCode: "0901",
-      quantityKg: 0,
-      originCountry: "",
-      originRegion: "",
-      supplierId: null,
-      destination: "",
-      status: "planned",
-      expectedArrival: null,
-      notes: "",
-    });
-  }
-
-  async function saveShipment() {
-    if (!shipmentForm.reference.trim() || !Number.isFinite(shipmentForm.quantityKg) || shipmentForm.quantityKg <= 0) {
-      Alert.alert(t.alerts.required);
-      return;
-    }
-    try {
-      const saved = editingShipmentId
-        ? await updateRemoteShipment(editingShipmentId, shipmentForm)
-        : await createRemoteShipment(shipmentForm);
-      onShipmentsLoaded([saved, ...shipments.filter((item) => item.id !== saved.id)]);
-      onSelectShipment(saved.id);
-      resetShipmentForm();
-    } catch (error) {
-      Alert.alert(t.common.failed, error instanceof Error ? error.message : String(error));
-    }
   }
 
   function saveSupplier() {
@@ -581,8 +509,7 @@ function SuppliersScreen({
             <Text style={styles.empty}>{t.suppliers.remoteEmpty}</Text>
           ) : null}
           {remoteOnly.map(renderSupplier)}
-          <Section title={t.suppliers.shipmentsTitle} description={t.suppliers.shipmentsDescription}>
-            {shipments.length === 0 ? <Text style={styles.empty}>{t.suppliers.shipmentsEmpty}</Text> : null}
+          {shipments.length > 0 ? <Section title={t.suppliers.shipmentsTitle} description={t.suppliers.shipmentsDescription}>
             {shipments.map((shipment) => (
               <View key={shipment.id} style={[styles.card, shipment.id === selectedShipmentId && styles.cardSelected]}>
                 <Pressable
@@ -603,9 +530,6 @@ function SuppliersScreen({
                   </Text>
                   {shipment.destination ? <Text style={styles.caption}>{shipment.destination}</Text> : null}
                 </Pressable>
-                {canManageShipments ? (
-                  <Button label={t.suppliers.editShipment} icon="create" onPress={() => editShipment(shipment)} secondary />
-                ) : null}
               </View>
             ))}
             {selectedShipmentId ? (
@@ -615,72 +539,11 @@ function SuppliersScreen({
                 onPress={() => {
                   onSelectShipment(null);
                   onSelectSupplier(null);
-                  resetShipmentForm();
                 }}
                 secondary
               />
             ) : null}
-            {canManageShipments ? (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  {editingShipmentId ? t.suppliers.editShipment : t.suppliers.newShipment}
-                </Text>
-                <Field label={t.suppliers.shipmentReference} value={shipmentForm.reference} onChangeText={(reference) => setShipmentForm((current) => ({ ...current, reference }))} />
-                <Field label={t.suppliers.shipmentProduct} value={shipmentForm.product} onChangeText={(product) => setShipmentForm((current) => ({ ...current, product }))} />
-                <Field label={t.suppliers.shipmentHsCode} value={shipmentForm.hsCode} onChangeText={(hsCode) => setShipmentForm((current) => ({ ...current, hsCode }))} />
-                <Field
-                  label={t.suppliers.shipmentQuantity}
-                  value={shipmentForm.quantityKg ? String(shipmentForm.quantityKg) : ""}
-                  onChangeText={(value) => setShipmentForm((current) => ({ ...current, quantityKg: Number(value.replace(",", ".")) }))}
-                  keyboardType="decimal-pad"
-                />
-                <Field label={t.suppliers.shipmentOriginCountry} value={shipmentForm.originCountry} onChangeText={(originCountry) => setShipmentForm((current) => ({ ...current, originCountry }))} />
-                <Field label={t.suppliers.shipmentOriginRegion} value={shipmentForm.originRegion} onChangeText={(originRegion) => setShipmentForm((current) => ({ ...current, originRegion }))} />
-                <Text style={styles.fieldLabel}>{t.suppliers.shipmentSupplier}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: shipmentForm.supplierId === null }}
-                  onPress={() => setShipmentForm((current) => ({ ...current, supplierId: null }))}
-                  style={[styles.documentChoice, shipmentForm.supplierId === null && styles.documentChoiceSelected]}
-                >
-                  <Text>{t.plots.noShipment}</Text>
-                </Pressable>
-                {[...state.suppliers, ...remoteOnly].map((supplier) => (
-                  <Pressable
-                    key={supplier.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: shipmentForm.supplierId === supplier.id }}
-                    onPress={() => setShipmentForm((current) => ({ ...current, supplierId: supplier.id }))}
-                    style={[styles.documentChoice, shipmentForm.supplierId === supplier.id && styles.documentChoiceSelected]}
-                  >
-                    <Text>{supplier.name} · {supplier.region}</Text>
-                  </Pressable>
-                ))}
-                <Field label={t.suppliers.shipmentDestination} value={shipmentForm.destination} onChangeText={(destination) => setShipmentForm((current) => ({ ...current, destination }))} />
-                <Text style={styles.fieldLabel}>{t.suppliers.shipmentStatus}</Text>
-                {(["planned", "in_transit", "arrived", "cancelled"] as ShipmentStatus[]).map((status) => (
-                  <Pressable
-                    key={status}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: shipmentForm.status === status }}
-                    onPress={() => setShipmentForm((current) => ({ ...current, status }))}
-                    style={[styles.documentChoice, shipmentForm.status === status && styles.documentChoiceSelected]}
-                  >
-                    <Text>{t.suppliers[`status_${status}`]}</Text>
-                  </Pressable>
-                ))}
-                <Field
-                  label={t.suppliers.shipmentExpectedArrival}
-                  value={shipmentForm.expectedArrival ?? ""}
-                  onChangeText={(value) => setShipmentForm((current) => ({ ...current, expectedArrival: value || null }))}
-                  placeholder="YYYY-MM-DD"
-                />
-                <Field label={t.suppliers.shipmentNotes} value={shipmentForm.notes} onChangeText={(notes) => setShipmentForm((current) => ({ ...current, notes }))} multiline />
-                <Button label={editingShipmentId ? t.suppliers.updateShipment : t.suppliers.createShipment} icon="save" onPress={() => void saveShipment()} />
-                {editingShipmentId ? <Button label={t.suppliers.newShipment} icon="add-circle" onPress={resetShipmentForm} secondary /> : null}
-              </View>
-            ) : null}
-          </Section>
+          </Section> : null}
         </>
       ) : null}
     </>
@@ -1031,6 +894,7 @@ function PlotsScreen({
           setFieldErrors((current) => ({ ...current, area: undefined }));
         }} keyboardType="decimal-pad" invalid={Boolean(fieldErrors.area)} />
         {fieldErrors.area ? <Text style={styles.errorText}>{fieldErrors.area}</Text> : null}
+        {shipments.length > 0 ? <>
         <Text style={styles.fieldLabel}>{t.plots.selectedShipment}</Text>
         <Pressable
           accessibilityRole="button"
@@ -1041,7 +905,7 @@ function PlotsScreen({
           }}
           style={[styles.documentChoice, !selectedShipmentId && styles.documentChoiceSelected]}
         >
-          <Text>{t.suppliers.noSupplier}</Text>
+          <Text>{t.plots.noShipment}</Text>
         </Pressable>
         {shipments.map((shipment) => (
           <Pressable
@@ -1057,6 +921,7 @@ function PlotsScreen({
             <Text>{shipment.reference} · {shipment.product} · {shipment.quantityKg} kg</Text>
           </Pressable>
         ))}
+        </> : null}
         {selectedShipment ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>{t.plots.shipment}</Text>
@@ -2014,11 +1879,6 @@ export function AppView({ controller }: { controller: AppController }) {
   } = controller;
 
   const organizationId = auth.session?.selectedOrganizationId;
-  const userRoles = auth.session?.user.roles ??
-    (auth.session?.user.role ? [auth.session.user.role] : []);
-  const canManageShipments = userRoles.some((role) =>
-    ["system_admin", "org_admin", "reviewer"].includes(role),
-  );
   useEffect(() => {
     setSelectedSupplierId(null);
     setSelectedShipmentId(null);
@@ -2040,7 +1900,6 @@ export function AppView({ controller }: { controller: AppController }) {
           onSelectSupplier={setSelectedSupplierId}
           selectedShipmentId={selectedShipmentId}
           onSelectShipment={setSelectedShipmentId}
-          canManageShipments={canManageShipments}
         />
       );
     }
@@ -2065,7 +1924,7 @@ export function AppView({ controller }: { controller: AppController }) {
     }
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
-  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments, canManageShipments]);
+  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments]);
 
   if (auth.activation) {
     return <ActivationScreen key={auth.activation.token ?? "activation-result"} controller={controller} />;
