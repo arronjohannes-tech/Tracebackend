@@ -1,6 +1,21 @@
+const organizationRoles = ["org_admin", "reviewer", "field_agent", "auditor"];
+
+export function assignableUserRoles(actor) {
+  return actor?.role === "system_admin" ? ["system_admin", ...organizationRoles] : [...organizationRoles];
+}
+
+export function isProtectedSystemUser(user) {
+  return user?.role === "system_admin" || user?.roles?.includes("system_admin") === true;
+}
+
+export function selectUserRoles(selected, changedRole, checked) {
+  if (!checked) return selected.filter((role) => role !== changedRole);
+  if (changedRole === "system_admin") return ["system_admin"];
+  return [...new Set([...selected.filter((role) => role !== "system_admin"), changedRole])];
+}
+
 export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRead, canEdit, currentUser, refresh, reauthenticate }) {
   const sections = ["overview", "suppliers", "plots", "shipments", "risk", "dds", "guide", "users", "roles"];
-  const roleNames = ["org_admin", "reviewer", "field_agent", "auditor"];
   let users = [];
   let matrix = null;
   let editing = null;
@@ -52,7 +67,7 @@ export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRea
       <td>${(user.roles ?? [user.role]).map((role) => esc(labelFor("prod.role", role))).join(", ")}</td>
       <td>${esc(t(user.active ? "prod.access.active" : "prod.access.inactive"))}</td>
       <td><button type="button" class="secondary-button" data-user-edit="${esc(user.id)}">${esc(t("prod.access.details"))}</button>
-        ${canEdit("users") && user.id !== currentUser()?.id ? `
+        ${canEdit("users") && !isProtectedSystemUser(user) && user.id !== currentUser()?.id ? `
           <button type="button" class="secondary-button" data-user-toggle="${esc(user.id)}">${esc(t(user.active ? "prod.access.deactivate" : "prod.access.activate"))}</button>
           <button type="button" class="danger-button" data-user-delete="${esc(user.id)}">${esc(t("prod.common.delete"))}</button>` : ""}</td></tr>`).join("")
       : `<tr><td colspan="5">${esc(t("prod.common.empty"))}</td></tr>`;
@@ -82,21 +97,33 @@ export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRea
     form.elements.email.value = user?.email ?? "";
     form.elements.password.required = !user;
     form.elements.active.checked = user?.active ?? true;
+    const roleNames = assignableUserRoles(currentUser());
+    if (isProtectedSystemUser(user) && !roleNames.includes("system_admin")) roleNames.unshift("system_admin");
     $("#managed-user-roles").innerHTML = `<legend>${esc(t("prod.access.assignedRoles"))}</legend>${roleNames.map((role) =>
       `<label class="access-check"><input type="checkbox" name="roles" value="${role}"
       ${(user?.roles ?? [user?.role]).includes(role) ? "checked" : ""}>${esc(labelFor("prod.role", role))}</label>`).join("")}`;
-    for (const control of form.querySelectorAll("input")) control.disabled = !canEdit("users");
+    const writable = canEdit("users") && !isProtectedSystemUser(user);
+    for (const control of form.querySelectorAll("input")) control.disabled = !writable;
     if (user?.id === currentUser()?.id) {
       form.elements.active.disabled = true;
       for (const input of form.querySelectorAll('[name="roles"]')) input.disabled = true;
     }
-    form.querySelector('[type="submit"]').hidden = !canEdit("users");
-    status("#managed-user-status", "");
+    form.querySelector('[type="submit"]').hidden = !writable;
+    status("#managed-user-status", isProtectedSystemUser(user) ? t("prod.access.systemProtected")
+      : currentUser()?.role === "system_admin" ? t("prod.access.systemExclusive") : "");
     $("#managed-user-dialog").showModal();
   }
   $("#user-search").addEventListener("input", renderUsers);
   $("#user-filter").addEventListener("change", renderUsers);
   $("#user-create").addEventListener("click", () => { if (canEdit("users")) openUser(); });
+  $("#managed-user-roles").addEventListener("change", (event) => {
+    const input = event.target.closest('[name="roles"]');
+    if (!input || input.disabled || !canEdit("users") || isProtectedSystemUser(editing)) return;
+    const controls = [...$("#managed-user-roles").querySelectorAll('[name="roles"]')];
+    const selected = selectUserRoles(controls.filter((control) => control.checked).map((control) => control.value),
+      input.value, input.checked);
+    for (const control of controls) control.checked = selected.includes(control.value);
+  });
   $("#users-body").addEventListener("click", async (event) => {
     const button = event.target.closest("button");
     if (!button) return;
@@ -104,7 +131,7 @@ export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRea
     const user = users.find((item) => item.id === id);
     if (!user) return;
     if (button.dataset.userEdit) { openUser(user); return; }
-    if (!canEdit("users")) return;
+    if (!canEdit("users") || isProtectedSystemUser(user)) return;
     if (button.dataset.userDelete && !confirm(t("prod.access.deleteConfirm", { name: user.displayName }))) return;
     button.disabled = true;
     try {
@@ -117,7 +144,7 @@ export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRea
   });
   $("#managed-user-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!canEdit("users")) return;
+    if (!canEdit("users") || isProtectedSystemUser(editing)) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const selected = data.getAll("roles");

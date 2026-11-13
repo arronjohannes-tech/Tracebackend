@@ -2,12 +2,15 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 import { writeAudit, type AuditContext } from "../audit.js";
 import { queryMany, queryOne, withContext } from "../db.js";
-import { badRequest, conflict, notFound } from "../errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../errors.js";
 import { hashPassword } from "../security.js";
 import { roles, type AuthContext, type Role } from "../types.js";
 
-const managedRole = z.enum(roles).exclude(["system_admin"]);
-const roleList = z.array(managedRole).min(1).max(4).refine((value) => new Set(value).size === value.length);
+const managedRole = z.enum(roles);
+const roleList = z.array(managedRole).min(1).max(4)
+  .refine((value) => new Set(value).size === value.length)
+  .refine((value) => !value.includes("system_admin") || value.length === 1,
+    "System administrator must be assigned without other roles.");
 export const createUserSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
   displayName: z.string().trim().min(1).max(120),
@@ -30,11 +33,21 @@ const fields = `id, organization_id AS "organizationId", email, display_name AS 
 const primaryRole = (values: Role[]) => roles.find((role) => values.includes(role))!;
 const canonicalRoles = (values: readonly Role[]) => roles.filter((role) => values.includes(role));
 
+function assertRoleAssignment(auth: AuthContext, selected: readonly Role[]) {
+  if (!selected.includes("system_admin")) return;
+  if (auth.role !== "system_admin") throw forbidden("Only system administrators can assign the system administrator role.");
+  if (selected.length !== 1) throw badRequest("SYSTEM_ADMIN_EXCLUSIVE", "System administrator must be assigned without other roles.");
+}
+
 export async function assertRemainingAdministrator(client: PoolClient, organizationId: string, userId: string,
   nextRoles: readonly Role[], active: boolean) {
   const current = await queryOne<{ active: boolean; assigned_roles: Role[] }>(client,
-    "SELECT active, assigned_roles::text[] AS assigned_roles FROM users WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL", [userId, organizationId]);
+    `SELECT active, assigned_roles::text[] AS assigned_roles FROM users
+      WHERE id = $1 AND (organization_id = $2 OR role = 'system_admin') AND deleted_at IS NULL`, [userId, organizationId]);
   if (!current) throw notFound("User");
+  if (current.assigned_roles.includes("system_admin") && (!active || !nextRoles.includes("system_admin"))) {
+    throw conflict("SYSTEM_ADMIN_PROTECTED", "System administrator access is protected and cannot be removed here.");
+  }
   if (current.active && current.assigned_roles.includes("org_admin") && (!active || !nextRoles.includes("org_admin"))) {
     const remaining = await queryOne<{ count: number }>(client,
       `SELECT count(*)::int AS count FROM users WHERE organization_id = $1 AND id <> $2
@@ -50,13 +63,15 @@ export function createUserManagementService(pool: Pool) {
     async create(auth: AuthContext, audit: AuditContext, organizationId: string, body: z.infer<typeof createUserSchema>) {
       if (body.role && body.roles && !body.roles.includes(body.role)) throw badRequest("ROLE_MISMATCH", "Primary role must be assigned.");
       const selected = canonicalRoles(body.roles ?? [body.role!]);
+      assertRoleAssignment(auth, selected);
       const passwordHash = await hashPassword(body.password);
       return withContext(pool, auth, async (client) => {
         await client.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId]);
         const user = await queryOne(client,
           `INSERT INTO users(organization_id,email,display_name,password_hash,role,assigned_roles,active)
             VALUES ($1,$2,$3,$4,$5,$6::user_role[],$7) RETURNING ${fields}`,
-          [organizationId, body.email, body.displayName, passwordHash, primaryRole(selected), selected, body.active]);
+          [selected.includes("system_admin") ? null : organizationId, body.email, body.displayName,
+            passwordHash, primaryRole(selected), selected, body.active]);
         await writeAudit(client, audit, auth, "user.create", "user", String(user!.id), { organizationId, roles: selected });
         return user;
       });
@@ -67,6 +82,7 @@ export function createUserManagementService(pool: Pool) {
         throw badRequest("SELF_ACCESS_CHANGE", "You cannot remove your own access or change your own roles.");
       }
       if (body.role && body.roles && !body.roles.includes(body.role)) throw badRequest("ROLE_MISMATCH", "Primary role must be assigned.");
+      assertRoleAssignment(auth, body.roles ?? (body.role ? [body.role] : []));
       const passwordHash = body.password ? await hashPassword(body.password) : null;
       return withContext(pool, auth, async (client) => {
         await client.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId]);
@@ -80,6 +96,7 @@ export function createUserManagementService(pool: Pool) {
         const user = await queryOne(client, `UPDATE users SET email=COALESCE($3,email),
           display_name=COALESCE($4,display_name), password_hash=COALESCE($5,password_hash),
           role=$6, assigned_roles=$7::user_role[], active=$8,
+          organization_id=CASE WHEN $6::user_role='system_admin' THEN NULL ELSE organization_id END,
           token_version=token_version + CASE WHEN $5::text IS NOT NULL OR email <> COALESCE($3,email)
             OR assigned_roles <> $7::user_role[] OR active <> $8 OR $9 THEN 1 ELSE 0 END,
           deleted_at=CASE WHEN $9 THEN now() ELSE deleted_at END, updated_at=now()

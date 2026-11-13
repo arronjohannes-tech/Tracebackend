@@ -140,6 +140,14 @@ The productive frontend adds **User management** and **Role management** for
 own organization. System administrators select an organization before managing
 its users; global system-administrator accounts are not editable here.
 
+- Only an existing `system_admin` can assign `system_admin` when creating a user
+  or changing a non-system user's roles. It grants cross-organization access and
+  must be assigned alone. Assigning this role clears the account's organization
+  to match the global-account database constraint; the account then disappears
+  from the organization-scoped list. Existing system-administrator accounts remain
+  read-only here, and registration deactivation cannot remove their access.
+  Mobile registration approval still excludes `system_admin`. No migration is
+  needed for this assignment option.
 - User creation, details, name/email/password edits, activation/deactivation,
   multiple-role assignment, search, and soft deletion are supported.
 - Soft deletion retains audit history and reserves the email within that

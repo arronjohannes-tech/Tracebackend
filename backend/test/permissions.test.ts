@@ -43,10 +43,15 @@ test("role matrix validates complete unique pairs, visibility and protected admi
   }
 });
 
-test("user schemas reject absent, duplicate or system roles and empty updates", () => {
+test("user schemas accept exclusive system roles and reject absent, duplicate or mixed roles and empty updates", () => {
   const body = { email: "USER@example.com", displayName: " User ", password: "a-long-test-password" };
   assert.equal(createUserSchema.safeParse(body).success, false);
-  assert.equal(createUserSchema.safeParse({ ...body, roles: ["system_admin"] }).success, false);
+  assert.equal(createUserSchema.safeParse({ ...body, roles: ["system_admin"] }).success, true);
+  assert.equal(createUserSchema.safeParse({ ...body, role: "system_admin" }).success, true);
+  for (const selected of [["system_admin", "org_admin"], ["system_admin", "auditor"]]) {
+    assert.equal(createUserSchema.safeParse({ ...body, roles: selected }).success, false);
+    assert.equal(updateUserSchema.safeParse({ roles: selected }).success, false);
+  }
   assert.equal(createUserSchema.safeParse({ ...body, roles: ["auditor", "auditor"] }).success, false);
   assert.equal(createUserSchema.parse({ ...body, roles: ["reviewer", "auditor"] }).email, "user@example.com");
   assert.equal(updateUserSchema.safeParse({}).success, false);

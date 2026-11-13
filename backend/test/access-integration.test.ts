@@ -60,7 +60,9 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
       CREATE TABLE users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid REFERENCES organizations(id),
         email text NOT NULL,display_name text,password_hash text,role user_role NOT NULL,active boolean DEFAULT true,
         token_version integer DEFAULT 0,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),
-        UNIQUE(organization_id,email));
+        UNIQUE(organization_id,email),
+        CHECK ((role='system_admin' AND organization_id IS NULL) OR
+          (role<>'system_admin' AND organization_id IS NOT NULL)));
       CREATE TABLE refresh_tokens(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,revoked_at timestamptz);
       CREATE TABLE documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid,organization_id uuid,upload_expires_at timestamptz);
       CREATE TABLE audit_logs(organization_id uuid,actor_user_id uuid,action text,resource_type text,resource_id text,
@@ -116,6 +118,62 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
       assert.equal((await request(worker, "/api/v1/admin/users")).statusCode, 403);
       await assert.rejects(users.update(admin, audit, org, adminId, { active: false }), /own access/);
       await assert.rejects(users.update(admin, audit, org, adminId, { roles: ["auditor"] }), /own access/);
+    });
+    await t.test("system role assignment is exclusive, privileged and revokes previous sessions", async () => {
+      const input = { email: "system-manager@example.com", displayName: "System manager",
+        password: "integration-test-password", roles: ["system_admin"] as const };
+      const body = createUserSchema.parse(input);
+      await assert.rejects(users.create(admin, audit, org, body), /Only system administrators/);
+      const denied = await app.inject({ method: "POST", url: "/api/v1/admin/users",
+        headers: { authorization: `Bearer ${await signAccessToken(config, admin)}` }, payload: input });
+      assert.equal(denied.statusCode, 403);
+      const privileged = await users.create(system, audit, org, body);
+      assert.ok(privileged);
+      assert.deepEqual(privileged.roles, ["system_admin"]);
+      assert.equal(privileged.organizationId, null);
+      const actor: AuthContext = { userId: String(privileged.id), organizationId: null,
+        role: "system_admin", tokenVersion: 0 };
+      const candidate = await users.create(admin, audit, org, createUserSchema.parse({
+        email: "promoted@example.com", displayName: "Candidate", password: "integration-test-password", roles: ["auditor"],
+      }));
+      assert.ok(candidate);
+      const id = String(candidate.id);
+      await db.query("INSERT INTO refresh_tokens(user_id) VALUES($1)", [id]);
+      await assert.rejects(users.update(admin, audit, org, id, { roles: ["system_admin"] }), /Only system administrators/);
+      const deniedPromotion = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/" + id,
+        headers: { authorization: `Bearer ${await signAccessToken(config, admin)}` },
+        payload: { roles: ["system_admin"] } });
+      assert.equal(deniedPromotion.statusCode, 403);
+      const mixed = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/" + id + "?organizationId=" + org,
+        headers: { authorization: `Bearer ${await signAccessToken(config, actor)}` },
+        payload: { roles: ["system_admin", "auditor"] } });
+      assert.equal(mixed.statusCode, 400);
+      await assert.rejects(users.update(actor, audit, org, adminId, { roles: ["system_admin"] }), /last active organization administrator/i);
+      const promote = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/" + id + "?organizationId=" + org,
+        headers: { authorization: `Bearer ${await signAccessToken(config, actor)}` },
+        payload: { roles: ["system_admin"] } });
+      assert.equal(promote.statusCode, 200, promote.body);
+      assert.deepEqual(promote.json().data.roles, ["system_admin"]);
+      assert.equal(promote.json().data.organizationId, null);
+      assert.equal((await users.list(admin, org)).some((user) => user.id === id), false);
+      assert.equal((await db.query("SELECT token_version FROM users WHERE id=$1", [id])).rows[0].token_version, 1);
+      assert.ok((await db.query("SELECT revoked_at FROM refresh_tokens WHERE user_id=$1", [id])).rows[0].revoked_at);
+      const oldAuth: AuthContext = { userId: id, organizationId: org, role: "auditor", tokenVersion: 0 };
+      assert.equal((await request(oldAuth, "/api/v1/auth/me")).statusCode, 401);
+      const promotedAuth: AuthContext = { ...oldAuth, organizationId: null, role: "system_admin", tokenVersion: 1 };
+      assert.equal((await request(promotedAuth, "/api/v1/admin/users?organizationId=" + foreignOrg)).statusCode, 200);
+      for (const auth of [admin, actor]) {
+        await assert.rejects(users.update(auth, audit, org, id, { active: false }), /not found/i);
+        await assert.rejects(users.update(auth, audit, org, id, { roles: ["auditor"] }), /not found/i);
+        await assert.rejects(users.update(auth, audit, org, id, {}, true), /not found/i);
+      }
+      await assert.rejects(users.update(actor, audit, org, actor.userId, { roles: ["auditor"] }), /own access/);
+      const registration = await db.query(`INSERT INTO mobile_registrations(display_name,email,phone_country,phone_number,
+        status,organization_id,assigned_roles,user_id) VALUES('Candidate','promoted@example.com','DE','+4915112345678',
+        'active',$1,ARRAY['auditor'::user_role],$2) RETURNING id`, [org, id]);
+      const registrations = createRegistrationService(pool!, config);
+      await assert.rejects(registrations.deactivate(actor, audit, registration.rows[0].id), /protected/);
+      assert.equal((await db.query("SELECT active FROM users WHERE id=$1", [id])).rows[0].active, true);
     });
     await t.test("permission matrices are tenant isolated and effective on the next authenticated request", async () => {
       const matrix = await management.get(admin, org);

@@ -18,6 +18,8 @@ const rows = [
   ["prod.access.activate", "Aktivieren", "Activate", "አንቃ"],
   ["prod.access.deactivate", "Deaktivieren", "Deactivate", "አቦዝን"],
   ["prod.access.assignedRoles", "Zugeordnete Rollen", "Assigned roles", "የተመደቡ ሚናዎች"],
+  ["prod.access.systemExclusive", "Systemadministrator gilt organisationsübergreifend und wird ohne weitere Rollen vergeben. Die Organisationszuordnung entfällt; das Konto wird danach nicht mehr in dieser Organisationsliste angezeigt.", "System administrator applies across organizations and is assigned without other roles. The organization assignment is removed; the account will no longer appear in this organization's list.", "የስርዓት አስተዳዳሪ ሚና በሁሉም ድርጅቶች ይሰራል፤ ያለ ሌሎች ሚናዎች ይመደባል። የድርጅት ምደባው ይወገዳል፤ መለያው ከዚህ የድርጅት ዝርዝር አይታይም።"],
+  ["prod.access.systemProtected", "Systemadministratorkonten sind hier schreibgeschützt.", "System administrator accounts are read-only here.", "የስርዓት አስተዳዳሪ መለያዎች እዚህ ለንባብ ብቻ ናቸው።"],
   ["prod.access.actions", "Aktionen", "Actions", "እርምጃዎች"],
   ["prod.access.details", "Anzeigen / Ändern", "View / edit", "አሳይ / አርትዕ"],
   ["prod.access.password", "Neues Passwort (mindestens 12 Zeichen; bei Änderungen optional)", "New password (at least 12 characters; optional when editing)", "አዲስ የይለፍ ቃል (ቢያንስ 12 ቁምፊዎች፤ ሲያርትዑ አማራጭ)"],
