@@ -162,7 +162,9 @@ export const BACKGROUND_LONGEST_SIDE = 1024;
 const BACKGROUND_MIN_LOOKBACK_DAYS = 60;
 
 // Unclipped true-colour Sentinel-2 view of a bounding box, independent of the analysis preset.
-export function buildBackgroundRequest(settings: ProcessSettings, bbox: Bbox, now: Date = new Date()) {
+export function buildBackgroundRequest(
+  settings: ProcessSettings, bbox: Bbox, now: Date = new Date(), longestSide = BACKGROUND_LONGEST_SIDE,
+) {
   const optical: ProcessSettings = {
     ...settings,
     dataset: "sentinel-2-l2a",
@@ -182,7 +184,7 @@ export function buildBackgroundRequest(settings: ProcessSettings, bbox: Bbox, no
       data: [dataEntry(optical, timeRange)],
     },
     output: {
-      ...outputSize(bbox, BACKGROUND_LONGEST_SIDE),
+      ...outputSize(bbox, longestSide),
       responses: [{ identifier: "default", format: { type: "image/jpeg", quality: 85 } }],
     },
     evalscript: buildEvalscript(optical),

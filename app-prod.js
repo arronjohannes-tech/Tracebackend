@@ -7,10 +7,10 @@ import {
 import { format } from "./src/i18n-prod.mjs?v=2";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
-  backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection,
+  backgroundAreas, backgroundResolution, backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection,
   geoJsonFeature, groupOptions, maxDisplacementMetres, metresToDegrees, moveVertex, outerRing, plotTone,
   plotsInGroup, plotsForPolygonView, ringIsSimple, ringPath, sameRing, translateRing,
-} from "./src/plot-map.mjs?v=2";
+} from "./src/plot-map.mjs?v=3";
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 import { initAccessManagement } from "./src/access-management.mjs?v=1";
 import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
@@ -457,6 +457,34 @@ const scopeText = (correction) => {
 
 /* ---------- satellite background ---------- */
 
+const backgroundQueue = [];
+let activeBackgroundLoads = 0;
+let backgroundResizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(backgroundResizeTimer);
+  if (state.plotTab === "all") return;
+  backgroundResizeTimer = setTimeout(redrawPlots, 200);
+});
+
+function pumpBackgroundQueue() {
+  while (activeBackgroundLoads < 3 && backgroundQueue.length) {
+    const job = backgroundQueue.shift();
+    if (state.user !== job.user || state.organizationId !== job.organizationId) continue;
+    activeBackgroundLoads += 1;
+    void loadBackground(job).finally(() => {
+      activeBackgroundLoads -= 1;
+      pumpBackgroundQueue();
+    });
+  }
+}
+
+function mapResolution(bbox, viewBbox, selector) {
+  const element = $(selector);
+  return backgroundResolution(bbox, viewBbox,
+    element?.clientWidth || Math.min(window.innerWidth, 1000),
+    element?.clientHeight || 700, window.devicePixelRatio || 1);
+}
+
 // The map area of a plot stays fixed once chosen, so the image does not jump while its points are moved.
 function plotBbox(plot) {
   const stored = state.plotBboxes.get(plot.id);
@@ -466,31 +494,34 @@ function plotBbox(plot) {
   return bbox;
 }
 
-function backgroundEntry(bbox) {
+function backgroundEntry(bbox, size) {
   if (!bbox) return null;
   if (bboxTooLarge(bbox)) return { status: "tooLarge" };
-  const key = bboxKey(bbox);
-  if (!state.backgrounds.has(key)) void loadBackground(bbox);
+  const key = `${state.organizationId}:${bboxKey(bbox)}:${size}`;
+  const entry = state.backgrounds.get(key);
+  if (entry?.status === "loading" && entry.user !== state.user) state.backgrounds.delete(key);
+  if (!state.backgrounds.has(key)) {
+    state.backgrounds.set(key, { status: "loading", key, user: state.user });
+    backgroundQueue.push({ bbox, size, key, user: state.user, organizationId: state.organizationId });
+    pumpBackgroundQueue();
+  }
   return state.backgrounds.get(key);
 }
 
-async function loadBackground(bbox) {
-  const key = bboxKey(bbox);
-  const user = state.user;
-  state.backgrounds.set(key, { status: "loading" });
+async function loadBackground({ bbox, size, key, user, organizationId }) {
   try {
-    const data = await api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}`);
-    if (state.user !== user) return;
+    const data = await api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}&size=${size}`);
+    if (state.user !== user || state.organizationId !== organizationId) return;
     if (!/^image\/(jpeg|png)$/.test(data?.contentType ?? "")) throw new Error("Unexpected image type.");
     state.backgrounds.set(key, {
-      status: "ready", href: `data:${data.contentType};base64,${data.image}`, from: data.from, to: data.to,
+      status: "ready", key, bbox, href: `data:${data.contentType};base64,${data.image}`, from: data.from, to: data.to,
     });
   } catch (error) {
-    if (state.user !== user) return;
+    if (state.user !== user || state.organizationId !== organizationId) return;
     if (error.status === 401) { showLogin(); return; }
     state.backgrounds.set(key, {
       status: error.code === "SATELLITE_NOT_CONFIGURED" ? "unconfigured" : "failed",
-      message: error.message,
+      message: error.message, key,
     });
   }
   redrawPlots();
@@ -502,7 +533,7 @@ function redrawPlots() {
   if (state.dashboard) renderPlots();
 }
 
-function backgroundChip(entry, bbox) {
+function backgroundChip(entry) {
   if (!entry) return "";
   const text = {
     loading: t("prod.bg.loading"),
@@ -512,7 +543,7 @@ function backgroundChip(entry, bbox) {
     failed: t("prod.bg.failed"),
   }[entry.status];
   const retry = entry.status === "failed"
-    ? ` <button type="button" class="link-button" data-bg-retry="${escapeHtml(bboxKey(bbox))}">${escapeHtml(t("prod.bg.retry"))}</button>`
+    ? ` <button type="button" class="link-button" data-bg-retry="${escapeHtml(entry.key)}">${escapeHtml(t("prod.bg.retry"))}</button>`
     : "";
   return `<div class="map-attribution ${entry.status}" role="status" title="${escapeHtml(entry.message ?? "")}">${escapeHtml(text)}${retry}</div>`;
 }
@@ -987,13 +1018,15 @@ function renderPlotsOverview() {
     `<span><i class="${tone}"></i>${escapeHtml(t(`prod.pv.legend.${tone}`))}</span>`).join("");
   // The list view hides this map; only the visible selection map may trigger a satellite request.
   const area = state.plotTab === "selection" ? backgroundBbox(plots) : null;
-  const background = area ? backgroundEntry(area) : null;
-  const fitted = area && !bboxTooLarge(area) ? area : null;
+  const backgrounds = area ? backgroundAreas(plots).map((bbox) =>
+    backgroundEntry(bbox, mapResolution(bbox, area, "#plots-map"))) : [];
+  const background = backgrounds.find((entry) => entry.status === "failed")
+    ?? backgrounds.find((entry) => entry.status !== "ready") ?? backgrounds[0];
   $("#plots-map").innerHTML = `<span class="terrain terrain-one"></span><span class="terrain terrain-two"></span>
     ${buildMapSvg(plots, {
-      interactive: true, numbers: "index", bbox: fitted,
-      background: background?.status === "ready" ? background : null,
-    }, escapeHtml)}${message}${backgroundChip(background, area)}
+      interactive: true, numbers: "index", bbox: area,
+      backgrounds: backgrounds.filter((entry) => entry.status === "ready"),
+    }, escapeHtml)}${message}${backgroundChip(background)}
     <div class="map-key"><strong>${escapeHtml(t("prod.pv.count", { n: formatNumber(plots.length, 0) }))}</strong>${legend}</div>`;
 
   const checkRow = (tone, text) =>
@@ -1090,7 +1123,9 @@ function renderPlotPane(plot) {
   const editing = state.edit?.plotId === plot.id ? state.edit : null;
   const shown = editing ? { ...plot, polygon: { type: "Polygon", coordinates: [editing.ring] } } : plot;
   const bbox = plotBbox(plot);
-  const background = backgroundEntry(bbox);
+  const mapElement = $("#plot-map");
+  const background = bbox && mapElement ? backgroundEntry(bbox, mapResolution(bbox, bbox, "#plot-map")) : null;
+  if (bbox && !mapElement) requestAnimationFrame(redrawPlots);
   $("#plot-pane").innerHTML = `
     <div class="map-layout">
       <article class="map-card">
@@ -1101,7 +1136,7 @@ function renderPlotPane(plot) {
             vertices: true, bbox, editing: Boolean(editing), ghost: editing?.original ?? null,
             background: background?.status === "ready" ? background : null,
           }, escapeHtml)}
-          ${backgroundChip(background, bbox)}
+          ${backgroundChip(background)}
           <div class="map-key"><i class="${tone}"></i> ${escapeHtml(key)}</div>
         </div>
       </article>

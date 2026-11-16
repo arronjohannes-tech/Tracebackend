@@ -41,9 +41,9 @@ export async function registerPlotRoutes(
         preHandler: authenticate,
         config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
     }, async (request, reply) => {
-        const { bbox } = parse(backgroundQuerySchema, queryWithoutOrganization(request.query));
+        const { bbox, size } = parse(backgroundQuerySchema, queryWithoutOrganization(request.query));
         const image = await backgroundService.get(
-            authOf(request), organizationFromRequest(request), parseBackgroundBbox(bbox));
+            authOf(request), organizationFromRequest(request), parseBackgroundBbox(bbox), size);
         reply.header("Cache-Control", "private, max-age=3600");
         return sendData(reply, image);
     });

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, plotsForPolygonView, ringPath, geoJsonFeature, maxDisplacementMetres, metresToDegrees, moveVertex, ringIsSimple, sameRing, translateRing,
+  backgroundAreas, backgroundResolution, backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection, groupOptions, niceScale, plotTone, plotsInGroup, plotsForPolygonView, ringPath, geoJsonFeature, maxDisplacementMetres, metresToDegrees, moveVertex, ringIsSimple, sameRing, translateRing,
 } from "../src/plot-map.mjs";
 
 const ok = { state: "ok" };
@@ -115,6 +115,44 @@ test("a bbox projection fills the view exactly and unproject inverts project", (
   assert.ok(projection.width <= 1000 && projection.height <= 700);
   const [lng, lat] = projection.unproject(projection.project([36.8005, 7.6004]));
   assert.ok(Math.abs(lng - 36.8005) < 1e-9 && Math.abs(lat - 7.6004) < 1e-9);
+});
+
+test("distant selections split into local backgrounds while neighbouring plots share an image", () => {
+  const nearby = [plot("a"), plot("b", { polygon: square(36.802, 7.602) })];
+  assert.deepEqual(backgroundAreas(nearby), [backgroundBbox(nearby)]);
+  const plots = [...nearby, plot("c", { polygon: square(37.5, 8.6) })];
+  const areas = backgroundAreas(plots);
+  assert.equal(areas.length, 2);
+  assert.ok(areas.every((bbox) => !bboxTooLarge(bbox)));
+  assert.ok(plots.every((item) => areas.some((bbox) => bboxContains(bbox, [item]))));
+  assert.deepEqual(backgroundAreas([...plots].reverse()), areas);
+  assert.deepEqual(backgroundAreas([{ polygon: null }]), []);
+  const oversized = plot("large", { polygon: square(36, 7, 1) });
+  assert.ok(bboxTooLarge(backgroundAreas([oversized])[0]));
+});
+
+test("background resolution follows rendered size, device density and each image's share of the map", () => {
+  const bbox = [36, 7, 36.01, 7.01];
+  assert.equal(backgroundResolution(bbox, bbox, 300, 300), 512);
+  assert.equal(backgroundResolution(bbox, bbox, 300, 300, 2), 1024);
+  assert.equal(backgroundResolution(bbox, bbox, 900, 900, 4), 2048);
+  assert.equal(backgroundResolution(bbox, bbox, 4000, 4000), 2048);
+  assert.equal(backgroundResolution(bbox, [36, 7, 37, 8], 1000, 700, 2), 256);
+});
+
+test("multiple satellite images retain geographic placement below all polygons", () => {
+  const plots = [plot("a"), plot("b", { polygon: square(37.5, 8.6) })];
+  const bbox = backgroundBbox(plots);
+  const backgrounds = backgroundAreas(plots).map((area, index) => ({ bbox: area, href: `image-${index}` }));
+  const svg = buildMapSvg(plots, { bbox, backgrounds }, escape);
+  assert.equal((svg.match(/<image /g) ?? []).length, 2);
+  assert.ok(svg.lastIndexOf("<image") < svg.indexOf('class="geo-plot'));
+  const projection = createProjection(plots, bbox);
+  for (const entry of backgrounds) {
+    const [x, y] = projection.project([entry.bbox[0], entry.bbox[3]]);
+    const [right, bottom] = projection.project([entry.bbox[2], entry.bbox[1]]);
+    assert.ok(svg.includes(`href="${entry.href}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(right - x).toFixed(1)}" height="${(bottom - y).toFixed(1)}"`));
+  }
 });
 
 test("the satellite image is drawn across the bbox below the polygon and handles appear when editing", () => {

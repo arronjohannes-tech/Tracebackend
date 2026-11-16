@@ -76,6 +76,37 @@ export function bboxTooLarge(bbox) {
   return Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]) > MAX_BACKGROUND_SPAN_DEG;
 }
 
+export function backgroundAreas(plots) {
+  const valid = plots.filter(outerRing);
+  const bbox = backgroundBbox(valid);
+  if (!bbox) return [];
+  if (!bboxTooLarge(bbox) || valid.length === 1) return [bbox];
+  const axis = bbox[2] - bbox[0] > bbox[3] - bbox[1] ? 0 : 1;
+  const sorted = valid.map((plot) => {
+    const extent = backgroundBbox([plot]);
+    return { plot, center: (extent[axis] + extent[axis + 2]) / 2 };
+  }).sort((a, b) => a.center - b.center);
+  let middle = 1;
+  for (let index = 2; index < sorted.length; index += 1) {
+    if (sorted[index].center - sorted[index - 1].center > sorted[middle].center - sorted[middle - 1].center) {
+      middle = index;
+    }
+  }
+  return [
+    ...backgroundAreas(sorted.slice(0, middle).map((item) => item.plot)),
+    ...backgroundAreas(sorted.slice(middle).map((item) => item.plot)),
+  ];
+}
+
+export function backgroundResolution(bbox, viewBbox, width, height, pixelRatio = 1) {
+  const projection = createProjection([], viewBbox);
+  const [left, top] = projection.project([bbox[0], bbox[3]]);
+  const [right, bottom] = projection.project([bbox[2], bbox[1]]);
+  const scale = Math.min(width / projection.width, height / projection.height);
+  const pixels = Math.max(right - left, bottom - top) * scale * Math.min(2, Math.max(1, pixelRatio));
+  return [256, 512, 1024, 2048].find((size) => size >= pixels) ?? 2048;
+}
+
 /** True when every vertex of every plot lies inside the bounding box. */
 export function bboxContains(bbox, plots) {
   const rings = plots.map(outerRing).filter(Boolean);
@@ -153,7 +184,8 @@ function centroidOf(plot, ring, project) {
 /**
  * Builds the SVG of the map. Options: `interactive` makes polygons selectable (data-plot-tab), `vertices` draws
  * the captured GPS points, `numbers` labels polygons by list position, `bbox` fixes the visible area,
- * `background` ({ href }) draws the satellite image across the bbox, `editing` turns the vertices into
+ * `background` ({ href }) fills the bbox; `backgrounds` ({ href, bbox }[]) positions multiple images.
+ * `editing` turns the vertices into
  * draggable handles and `ghost` outlines the position the editing started from.
  */
 export function buildMapSvg(plots, options, escape) {
@@ -189,10 +221,15 @@ export function buildMapSvg(plots, options, escape) {
   }).join("");
   const ghostRing = options.ghost;
   const ghost = ghostRing ? `<path class="geo-ghost" d="${ringPath(ghostRing, project)}"/>` : "";
-  const image = options.background?.href
+  const image = (options.background?.href
     ? `<image class="geo-image" href="${escape(options.background.href)}" x="0" y="0"`
       + ` width="${width.toFixed(1)}" height="${height.toFixed(1)}" preserveAspectRatio="none"/>`
-    : "";
+    : "") + (options.backgrounds ?? []).filter((entry) => entry.href).map((entry) => {
+      const [x, y] = project([entry.bbox[0], entry.bbox[3]]);
+      const [right, bottom] = project([entry.bbox[2], entry.bbox[1]]);
+      return `<image class="geo-image" href="${escape(entry.href)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}"`
+        + ` width="${(right - x).toFixed(1)}" height="${(bottom - y).toFixed(1)}" preserveAspectRatio="none"/>`;
+    }).join("");
   const scale = niceScale(pixelsPerMetre);
   const scaleBar = scale
     ? `<g class="geo-scale"><path d="M40 ${(height - 52).toFixed(1)} v14 h${scale.pixels.toFixed(1)} v-14"/>`

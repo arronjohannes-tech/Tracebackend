@@ -219,8 +219,9 @@ export function createCopernicusService(
       runtime: ProcessRuntime,
       bbox: Bbox,
       now: Date = new Date(),
+      longestSide = 1024,
     ): Promise<BackgroundImage> {
-      const { request, timeRange } = buildBackgroundRequest(runtime.settings, bbox, now);
+      const { request, timeRange } = buildBackgroundRequest(runtime.settings, bbox, now, longestSide);
       const result = await client.process(runtime.settings, runtime.credentials, request, "image/jpeg");
       return {
         bbox,

@@ -251,6 +251,14 @@ test("background bounding boxes are validated and snapped", () => {
   }
 });
 
+test("background requests honour the requested resolution and retain their geographic aspect ratio", () => {
+  for (const size of [256, 512, 1024, 2048]) {
+    const { request } = buildBackgroundRequest(defaultProcessSettings(), [36, 7, 36.02, 7.01], new Date(), size);
+    assert.equal(request.output.width, size);
+    assert.ok(Math.abs(request.output.height / size - 1 / (2 * Math.cos(7.005 * Math.PI / 180))) < 1 / size);
+  }
+});
+
 test("the background route validates its query and reports an unconfigured satellite service", async () => {
   const bad = await request("field_agent", { method: "GET", url: "/api/v1/plots/satellite-background?bbox=1,2" });
   assert.equal(bad.response.statusCode, 400);
@@ -262,9 +270,15 @@ test("the background route validates its query and reports an unconfigured satel
   });
   assert.equal(unconfigured.response.statusCode, 409);
   assert.equal(unconfigured.response.json().error.code, "SATELLITE_NOT_CONFIGURED");
+  for (const size of ["0", "4096", "NaN", "257", "512.5"]) {
+    const invalid = await request("field_agent", {
+      method: "GET", url: `/api/v1/plots/satellite-background?bbox=36.79,7.59,36.81,7.61&size=${size}`,
+    });
+    assert.equal(invalid.response.statusCode, 400);
+  }
 });
 
-function backgroundService(options: { fail?: boolean; cached?: BackgroundImage } = {}) {
+function backgroundService(options: { fail?: boolean; cached?: BackgroundImage; beforeFetch?: () => Promise<void> } = {}) {
   const image: BackgroundImage = {
     bbox: [36.79, 7.59, 36.81, 7.61], contentType: "image/jpeg", image: "AAAA",
     from: "2026-09-01T00:00:00.000Z", to: "2026-11-01T00:00:00.000Z",
@@ -272,6 +286,7 @@ function backgroundService(options: { fail?: boolean; cached?: BackgroundImage }
   const stored = new Map<string, Buffer>();
   if (options.cached) stored.set("preset", Buffer.from(JSON.stringify(options.cached)));
   let fetches = 0;
+  const sizes: number[] = [];
   const store: ObjectStore = {
     async put(key, bytes) { stored.set(key, bytes); },
     async get(key) {
@@ -284,8 +299,10 @@ function backgroundService(options: { fail?: boolean; cached?: BackgroundImage }
   };
   const copernicus = {
     async loadRuntime() { return { settings: defaultProcessSettings(), credentials: { clientId: "a", clientSecret: "b" } }; },
-    async backgroundImage() {
+    async backgroundImage(_runtime: unknown, _bbox: unknown, _now: unknown, size: number) {
       fetches += 1;
+      sizes.push(size);
+      await options.beforeFetch?.();
       if (options.fail) throw new ProcessApiError("process", "Process API returned HTTP 403: denied", 403);
       return image;
     },
@@ -293,7 +310,7 @@ function backgroundService(options: { fail?: boolean; cached?: BackgroundImage }
   const client = { async query() { return { rows: [], rowCount: 0 }; }, release() { } } as unknown as PoolClient;
   const pool = { connect: async () => client } as unknown as Pool;
   const service = createSatelliteBackgroundService(pool, config, copernicus, () => store, () => new Date("2026-11-13T12:00:00Z"));
-  return { service, image, stored, fetches: () => fetches };
+  return { service, image, stored, sizes, fetches: () => fetches };
 }
 const auth = { userId, organizationId, role: "reviewer" as Role, tokenVersion: 0 };
 
@@ -304,6 +321,32 @@ test("a fetched background image is cached and served from the cache afterwards"
   assert.ok([...stored.keys()][0]!.startsWith(`satellite-background/${organizationId}/`));
   assert.deepEqual(await service.get(auth, organizationId, image.bbox), image);
   assert.equal(fetches(), 1);
+});
+
+test("parallel identical requests share one provider call, with separate caches per resolution and organization", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const { service, image, sizes, fetches } = backgroundService({ beforeFetch: () => gate });
+  const calls = Array.from({ length: 5 }, () => service.get(auth, organizationId, image.bbox, 512));
+  release();
+  assert.deepEqual(await Promise.all(calls), Array(5).fill(image));
+  assert.equal(fetches(), 1);
+  await service.get(auth, organizationId, image.bbox, 1024);
+  await service.get(auth, "another-organization", image.bbox, 512);
+  await service.get(auth, organizationId, image.bbox, 512);
+  assert.equal(fetches(), 3);
+  assert.deepEqual(sizes, [512, 1024, 512]);
+});
+
+test("failed parallel provider calls are shared but do not prevent a later retry", async () => {
+  const { service, image, fetches } = backgroundService({ fail: true });
+  const results = await Promise.allSettled([
+    service.get(auth, organizationId, image.bbox), service.get(auth, organizationId, image.bbox),
+  ]);
+  assert.ok(results.every((result) => result.status === "rejected"));
+  assert.equal(fetches(), 1);
+  await assert.rejects(service.get(auth, organizationId, image.bbox));
+  assert.equal(fetches(), 2);
 });
 
 test("provider failures become a 502 and a configured cache entry skips the provider", async () => {

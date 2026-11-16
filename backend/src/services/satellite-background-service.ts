@@ -15,6 +15,8 @@ const CACHE_WEEK_MS = 7 * 86_400_000;
 
 export const backgroundQuerySchema = z.object({
     bbox: z.string().regex(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/, "bbox must be west,south,east,north."),
+    size: z.coerce.number().refine((value) => [256, 512, 1024, 2048].includes(value),
+        "size must be 256, 512, 1024 or 2048.").default(1024),
 });
 
 // Snapping to 5 decimals (about one metre) lets identical map views share one cached image.
@@ -44,6 +46,7 @@ export function createSatelliteBackgroundService(
     openStore: () => ObjectStore = () => createObjectStore(config),
     now: () => Date = () => new Date(),
 ) {
+    const inFlight = new Map<string, Promise<BackgroundImage>>();
     // The cache is an optimisation only: a missing or failing object store must never block the image.
     const store = (): ObjectStore | null => {
         try {
@@ -53,40 +56,52 @@ export function createSatelliteBackgroundService(
         }
     };
 
-    return {
-        async get(auth: AuthContext, organizationId: string, bbox: Bbox): Promise<BackgroundImage> {
-            const week = Math.floor(now().getTime() / CACHE_WEEK_MS);
-            const key = `satellite-background/${organizationId}/${week}/${bbox.map((value) => value.toFixed(5)).join("_")}.json`;
-            const cache = store();
-            if (cache) {
-                try {
-                    return JSON.parse((await cache.get(key)).toString("utf8")) as BackgroundImage;
-                } catch {
-                    // not cached yet
-                }
-            }
-            const runtime = await withContext(pool, auth, (client) => copernicus.loadRuntime(client, organizationId));
-            if (!runtime) {
-                throw new AppError(409, "SATELLITE_NOT_CONFIGURED",
-                    "Satellite imagery is not configured for this organization.");
-            }
-            let image: BackgroundImage;
+    async function fetchImage(auth: AuthContext, organizationId: string, bbox: Bbox, size: number, key: string) {
+        const cache = store();
+        if (cache) {
             try {
-                image = await copernicus.backgroundImage(runtime, bbox, now());
-            } catch (error) {
-                if (error instanceof ProcessApiError) {
-                    throw new AppError(502, "SATELLITE_UNAVAILABLE", error.message);
-                }
-                throw error;
+                return JSON.parse((await cache.get(key)).toString("utf8")) as BackgroundImage;
+            } catch {
+                // not cached yet
             }
-            if (cache) {
-                try {
-                    await cache.put(key, Buffer.from(JSON.stringify(image), "utf8"));
-                } catch {
-                    // ignore: the next request fetches the image again
-                }
+        }
+        const runtime = await withContext(pool, auth, (client) => copernicus.loadRuntime(client, organizationId));
+        if (!runtime) {
+            throw new AppError(409, "SATELLITE_NOT_CONFIGURED",
+                "Satellite imagery is not configured for this organization.");
+        }
+        let image: BackgroundImage;
+        try {
+            image = await copernicus.backgroundImage(runtime, bbox, now(), size);
+        } catch (error) {
+            if (error instanceof ProcessApiError) {
+                throw new AppError(502, "SATELLITE_UNAVAILABLE", error.message);
             }
-            return image;
+            throw error;
+        }
+        if (cache) {
+            try {
+                await cache.put(key, Buffer.from(JSON.stringify(image), "utf8"));
+            } catch {
+                // ignore: the next request fetches the image again
+            }
+        }
+        return image;
+    }
+
+    return {
+        async get(auth: AuthContext, organizationId: string, bbox: Bbox, size = 1024): Promise<BackgroundImage> {
+            const week = Math.floor(now().getTime() / CACHE_WEEK_MS);
+            const key = `satellite-background/${organizationId}/${week}/${size}/${bbox.map((value) => value.toFixed(5)).join("_")}.json`;
+            const pending = inFlight.get(key);
+            if (pending) return pending;
+            const request = fetchImage(auth, organizationId, bbox, size, key);
+            inFlight.set(key, request);
+            try {
+                return await request;
+            } finally {
+                inFlight.delete(key);
+            }
         },
     };
 }
