@@ -16,6 +16,7 @@ export type AuthContext = {
   roles?: Role[];
   permissions?: import("./permissions.js").Permissions;
   tokenVersion: number;
+  sessionId?: string;
 };
 
 export type TenantClient = PoolClient;

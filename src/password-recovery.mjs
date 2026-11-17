@@ -1,3 +1,5 @@
+import { clearDeviceAuth } from "./device-session.mjs?v=1";
+
 export function initPasswordRecovery({ t, onReset }) {
   const login = document.querySelector("#tracehub-login-form");
   login.insertAdjacentHTML("afterend", `
@@ -68,7 +70,7 @@ export function initPasswordRecovery({ t, onReset }) {
       await post("reset-password", { token: resetToken, password: reset.elements.password.value });
       resetToken = null;
       reset.reset();
-      sessionStorage.clear();
+      clearDeviceAuth(sessionStorage);
       show("login");
       status.textContent = t("prod.reset.success");
     } catch (error) { status.textContent = error.message; }
@@ -80,7 +82,7 @@ export function initPasswordRecovery({ t, onReset }) {
     resetToken = new URLSearchParams(fragment.slice("reset-password?".length)).get("token");
     history.replaceState(null, "", location.pathname + location.search);
     if (resetToken) {
-      sessionStorage.clear();
+      clearDeviceAuth(sessionStorage);
       onReset();
       show("reset");
     }

@@ -9,7 +9,7 @@ test("registration country choices work without native Intl.DisplayNames", () =>
     const assert = require("node:assert/strict");
     delete Intl.DisplayNames;
     const { phoneCountries } = require(require("node:url").fileURLToPath(${JSON.stringify(moduleUrl)}));
-    for (const language of ["de", "en", "am", "ti"]) {
+    for (const language of ["de", "en", "am", "ti", "om"]) {
       const countries = phoneCountries(language);
       assert.ok(countries.length > 200);
       assert.ok(countries.every(country => country.name && country.flag && country.callingCode));

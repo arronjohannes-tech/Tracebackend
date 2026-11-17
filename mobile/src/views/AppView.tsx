@@ -27,6 +27,7 @@ import {
   ApiError,
   getApiBaseUrl,
   getCurrentAuthHeaders,
+  recordSessionActivity,
   getOperation,
   getRemoteShipments,
   getRemoteSuppliers,
@@ -54,8 +55,8 @@ import {
 } from "../domain";
 import {
   languages,
+  isLanguage,
   translations,
-  type Language,
   type Translation,
 } from "../i18n";
 import type { AppController } from "../controllers/useAppController";
@@ -168,7 +169,11 @@ function Field({
       <Text style={styles.label}>{label}</Text>
       <TextInput
         value={value}
-        onChangeText={onChangeText}
+        onChangeText={(text) => {
+          onChangeText(text);
+          void recordSessionActivity().catch((error: unknown) =>
+            Alert.alert(label, error instanceof Error ? error.message : String(error)));
+        }}
         placeholder={placeholder}
         placeholderTextColor="#98A29C"
         multiline={multiline}
@@ -1531,72 +1536,107 @@ function ConflictCard({
   );
 }
 
-function LanguageChooser({
-  visible,
-  language,
+function Dropdown({
+  label,
+  value,
+  options,
   onSelect,
-  onClose,
-  t,
+  disabled = false,
 }: {
-  visible: boolean;
-  language: Language;
-  onSelect: (language: Language) => void;
-  onClose: () => void;
-  t: Translation;
+  label: string;
+  value: string | null;
+  options: readonly { value: string; label: string }[];
+  onSelect: (value: string) => void;
+  disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modal}>
-        <View style={styles.dialog}>
-          <View style={styles.rowBetween}>
-            <View style={styles.flex}>
-              <Text style={styles.cardTitle}>{t.chooseLanguage}</Text>
-              <Text style={styles.description}>{t.languageHint}</Text>
-            </View>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={t.close}>
-              <Ionicons name="close" size={25} color={palette.ink} />
-            </Pressable>
-          </View>
-          {languages.map((item) => (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Pressable
+        style={[styles.dropdownTrigger, disabled && styles.buttonDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${selected?.label ?? label}`}
+        accessibilityState={{ expanded: open, disabled }}
+        disabled={disabled}
+        onPress={() => setOpen(!open)}
+      >
+        <Text style={[styles.itemTitle, styles.flex]}>{selected?.label ?? label}</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={palette.ink} />
+      </Pressable>
+      {open && !disabled ? (
+        <ScrollView style={styles.dropdownOptions} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          {options.map((option) => (
             <Pressable
-              key={item}
-              onPress={() => onSelect(item)}
-              style={[styles.language, item === language && styles.languageActive]}
+              key={option.value}
+              onPress={() => {
+                setOpen(false);
+                onSelect(option.value);
+              }}
+              style={[styles.language, option.value === value && styles.languageActive]}
               accessibilityRole="radio"
-              accessibilityState={{ checked: item === language }}
+              accessibilityState={{ checked: option.value === value }}
             >
-              <Text style={[styles.itemTitle, item === language && styles.languageText]}>
-                {translations[item].languageCode} · {translations[item].languageName}
+              <Text style={[styles.itemTitle, option.value === value && styles.languageText]}>
+                {option.label}
               </Text>
             </Pressable>
           ))}
-        </View>
-      </View>
-    </Modal>
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
+
+function LanguageDropdown({ controller }: { controller: AppController }) {
+  return (
+    <Dropdown
+      label={controller.t.chooseLanguage}
+      value={controller.language}
+      options={languages.map((language) => ({
+        value: language,
+        label: `${translations[language].languageCode} · ${translations[language].languageName}`,
+      }))}
+      onSelect={(value) => {
+        if (isLanguage(value)) {
+          void controller.setLanguage(value).catch(() => Alert.alert(translations[value].alerts.storageError));
+        }
+      }}
+    />
+  );
+}
+
+function OrganizationDropdown({ controller }: { controller: AppController }) {
+  const { auth, t } = controller;
+  return (
+    <Dropdown
+      label={t.auth.selectOrganization}
+      value={auth.session?.selectedOrganizationId ?? null}
+      options={auth.session?.organizations.map((organization) => ({
+        value: organization.id, label: organization.name,
+      })) ?? []}
+      disabled={auth.busy}
+      onSelect={(id) => {
+        if (id !== auth.session?.selectedOrganizationId) {
+          void auth.selectOrganization(id).catch((error: unknown) =>
+            Alert.alert(t.auth.selectOrganization, error instanceof Error ? error.message : String(error)));
+        }
+      }}
+    />
   );
 }
 
 function AuthLayout({ controller, children }: { controller: AppController; children: ReactNode }) {
-  const [languageOpen, setLanguageOpen] = useState(false);
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.authContent}>
-          <Button label={controller.t.chooseLanguage} icon="language" secondary onPress={() => setLanguageOpen(true)} />
+          <LanguageDropdown controller={controller} />
           {children}
         </ScrollView>
       </KeyboardAvoidingView>
-      <LanguageChooser
-        visible={languageOpen}
-        language={controller.language}
-        t={controller.t}
-        onClose={() => setLanguageOpen(false)}
-        onSelect={(language) => {
-          void controller.setLanguage(language).catch(() => undefined);
-          setLanguageOpen(false);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -1794,15 +1834,8 @@ function OrganizationScreen({ controller }: { controller: AppController }) {
       <View style={styles.login}>
         <View style={styles.card}>
           <Text style={styles.heading}>{t.auth.selectOrganization}</Text>
-          {auth.session?.organizations.map((organization) => (
-            <Button
-              key={organization.id}
-              label={organization.name}
-              icon="business"
-              onPress={() => void auth.selectOrganization(organization.id)}
-              secondary
-            />
-          ))}
+          <OrganizationDropdown controller={controller} />
+          <LanguageDropdown controller={controller} />
           {auth.error ? <Text style={styles.errorText}>{auth.error}</Text> : null}
           <Button label={t.auth.signOut} icon="log-out" onPress={() => void auth.logout()} />
         </View>
@@ -1811,7 +1844,7 @@ function OrganizationScreen({ controller }: { controller: AppController }) {
   );
 }
 
-function OrganizationChooser({
+function UserMenu({
   controller,
   visible,
   onClose,
@@ -1824,29 +1857,35 @@ function OrganizationChooser({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modal}>
-        <View style={styles.dialog}>
-          <Text style={styles.cardTitle}>{t.auth.selectOrganization}</Text>
-          {auth.session?.organizations.map((organization) => (
+        <View style={[styles.dialog, styles.userMenuDialog]} onTouchStart={auth.recordActivity}>
+          <ScrollView style={styles.userMenuContent} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            <View style={styles.userIdentity}>
+              <Ionicons name="person-circle-outline" size={44} color={palette.forest} />
+              <Text style={styles.cardTitle}>{t.userAccount}</Text>
+              {auth.session?.user.displayName || auth.session?.user.name ? (
+                <Text style={styles.itemTitle}>{auth.session.user.displayName ?? auth.session.user.name}</Text>
+              ) : null}
+              <Text style={styles.description}>{auth.session?.user.email}</Text>
+            </View>
+            <OrganizationDropdown controller={controller} />
+            <LanguageDropdown controller={controller} />
+            <Text style={styles.description}>{t.languageHint}</Text>
+            {auth.error ? <Text style={styles.errorText}>{auth.error}</Text> : null}
+          </ScrollView>
+          <View>
             <Button
-              key={organization.id}
-              label={organization.name}
-              icon="business"
-              secondary={organization.id !== auth.session?.selectedOrganizationId}
+              label={t.auth.signOut}
+              icon="log-out"
+              disabled={auth.busy}
               onPress={() => {
-                void auth.selectOrganization(organization.id);
+                void auth.logout();
                 onClose();
               }}
             />
-          ))}
-          <Button
-            label={t.auth.signOut}
-            icon="log-out"
-            onPress={() => {
-              void auth.logout();
-              onClose();
-            }}
-          />
-          <Button label={t.close} icon="close" onPress={onClose} secondary />
+          </View>
+          <View>
+            <Button label={t.close} icon="close" onPress={onClose} secondary />
+          </View>
         </View>
       </View>
     </Modal>
@@ -1854,8 +1893,7 @@ function OrganizationChooser({
 }
 
 export function AppView({ controller }: { controller: AppController }) {
-  const [languageOpen, setLanguageOpen] = useState(false);
-  const [organizationOpen, setOrganizationOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [remoteShipments, setRemoteShipments] = useState<Shipment[]>([]);
@@ -1863,8 +1901,6 @@ export function AppView({ controller }: { controller: AppController }) {
     auth,
     activeTab,
     setActiveTab,
-    language,
-    setLanguage,
     state,
     update,
     online,
@@ -1879,7 +1915,12 @@ export function AppView({ controller }: { controller: AppController }) {
   } = controller;
 
   const organizationId = auth.session?.selectedOrganizationId;
+  const userRoles = auth.session?.user.roles?.length
+    ? auth.session.user.roles
+    : auth.session?.user.role ? [auth.session.user.role] : [];
+  const roleLabel = userRoles.join(", ");
   useEffect(() => {
+    setUserMenuOpen(false);
     setSelectedSupplierId(null);
     setSelectedShipmentId(null);
     setRemoteShipments([]);
@@ -1956,6 +1997,10 @@ export function AppView({ controller }: { controller: AppController }) {
     return <LoginScreen controller={controller} />;
   }
 
+  if (!auth.session.selectedOrganizationId) {
+    return <OrganizationScreen controller={controller} />;
+  }
+
   if (!state) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1964,12 +2009,8 @@ export function AppView({ controller }: { controller: AppController }) {
     );
   }
 
-  if (!auth.session.selectedOrganizationId) {
-    return <OrganizationScreen controller={controller} />;
-  }
-
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} onTouchStart={auth.recordActivity}>
       <StatusBar style="light" />
       <View style={styles.header}>
         <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
@@ -1984,21 +2025,17 @@ export function AppView({ controller }: { controller: AppController }) {
           </Text>
         </View>
         <Pressable
-          style={styles.languageButton}
-          onPress={() => setOrganizationOpen(true)}
+          style={styles.userButton}
+          onPress={() => setUserMenuOpen(true)}
           accessibilityRole="button"
-          accessibilityLabel={t.auth.selectOrganization}
+          accessibilityLabel={roleLabel ? `${t.userAccount}: ${roleLabel}` : t.userAccount}
+          accessibilityState={{ expanded: userMenuOpen }}
         >
-          <Ionicons name="business" size={20} color="#FFFFFF" />
-        </Pressable>
-        <Pressable
-          style={styles.languageButton}
-          onPress={() => setLanguageOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={t.chooseLanguage}
-        >
-          <Ionicons name="language" size={20} color="#FFFFFF" />
-          <Text style={styles.languageCode}>{t.languageCode}</Text>
+          <View style={styles.userIconRow}>
+            <Ionicons name="person-circle-outline" size={30} color="#FFFFFF" />
+            <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
+          </View>
+          {roleLabel ? <Text style={styles.userRole}>{roleLabel}</Text> : null}
         </Pressable>
       </View>
       <View style={styles.syncBar}>
@@ -2013,7 +2050,8 @@ export function AppView({ controller }: { controller: AppController }) {
           disabled={syncing || !online || !configured}
         />
       </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={auth.recordActivity}>
         {storageError || geofenceError || auth.error ? (
           <View style={styles.blocking}>
             <Ionicons name="warning" size={23} color={palette.red} />
@@ -2062,20 +2100,10 @@ export function AppView({ controller }: { controller: AppController }) {
           </Pressable>
         ))}
       </View>
-      <LanguageChooser
-        visible={languageOpen}
-        language={language}
-        onClose={() => setLanguageOpen(false)}
-        onSelect={(next) => {
-          void setLanguage(next).catch(() => Alert.alert(translations[next].alerts.storageError));
-          setLanguageOpen(false);
-        }}
-        t={t}
-      />
-      <OrganizationChooser
+      <UserMenu
         controller={controller}
-        visible={organizationOpen}
-        onClose={() => setOrganizationOpen(false)}
+        visible={userMenuOpen}
+        onClose={() => setUserMenuOpen(false)}
       />
     </SafeAreaView>
   );
@@ -2099,8 +2127,14 @@ const styles = StyleSheet.create({
   connectivityText: { flexShrink: 1, color: "#FFFFFF", fontSize: 8, fontWeight: "700" },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: palette.lime },
   dotOffline: { backgroundColor: palette.amber },
-  languageButton: { minWidth: 45, height: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.1)" },
-  languageCode: { color: "#FFFFFF", fontSize: 8, fontWeight: "800" },
+  userButton: { minWidth: 48, maxWidth: 110, minHeight: 48, alignItems: "center", justifyContent: "center", gap: 2, padding: 4, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.1)" },
+  userIconRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  userRole: { color: "#FFFFFF", fontSize: 9, textAlign: "center" },
+  dropdownTrigger: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 13, borderWidth: 1, borderColor: palette.line, borderRadius: 9, backgroundColor: "#FFFFFF" },
+  dropdownOptions: { maxHeight: 240, marginTop: 4 },
+  userMenuContent: { flexShrink: 1 },
+  userMenuDialog: { maxHeight: "90%" },
+  userIdentity: { alignItems: "center", gap: 6, marginBottom: 12 },
   syncBar: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, backgroundColor: palette.softGreen },
   syncText: { flex: 1, color: palette.forest, fontSize: 10, fontWeight: "700" },
   scroll: { flex: 1, backgroundColor: palette.paper },

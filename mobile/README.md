@@ -1,6 +1,6 @@
 # SCTracker Coffee Mobile
 
-Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deutsch, Englisch, Amharisch und Tigrinya. Die Sprachauswahl bleibt dauerhaft im Header verfügbar und wird lokal gespeichert.
+Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deutsch, Englisch, Amharisch, Tigrinya und Afaan Oromoo (Oromia, Sprachcode `om`). Das Benutzer-Icon im Header öffnet das Benutzerkonto mit Name, E-Mail, Abmelden sowie Dropdowns für Organisation und Sprache. Die Sprachauswahl wird lokal gespeichert und ist auch vor der Anmeldung als Dropdown verfügbar. Der Organisationswechsel nutzt weiterhin die benutzer- und organisationsgetrennte lokale Datenhaltung.
 
 ## Funktionen
 
@@ -25,6 +25,19 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 `NOT_CONFIGURED` und eine fehlende API-URL werden immer als blockierende Fehler angezeigt und nie als Erfolg behandelt.
 
 ## Konfiguration
+
+### Gerätesitzungen
+
+Die vom Server gelieferten Sitzungsgrenzen gelten auch mobil: nach 30 Minuten
+ohne bestätigte Aktivität oder spätestens nach 24 Stunden ist eine erneute
+Anmeldung erforderlich. Berührungen, Scrollen und Texteingaben erneuern bei
+Netzverbindung im Hintergrund die Sitzung; Synchronisierung allein tut dies
+nicht. Ohne Netz kann die serverseitige Grenze nicht verlängert werden.
+Beim Rückkehren in die App wird die Grenze erneut geprüft. Access-/Refresh-Tokens
+bleiben in SecureStore. Abmelden entfernt nur die Sitzung, nicht die gespeicherten
+Entwürfe oder die Outbox: dieselbe Benutzer-/Organisationskombination lädt sie nach
+erneuter Anmeldung wieder. Noch nicht gespeicherte Formularfelder sind keine
+dauerhaften Entwürfe. Die vom Backend gemeldeten Rollen stehen unter dem Benutzer-Icon.
 
 `.env.example` nach `.env.local` kopieren und die Backend-Basis-URL setzen:
 

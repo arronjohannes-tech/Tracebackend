@@ -192,6 +192,52 @@ production and does not validate the full PostGIS schema.
 
 ## API contract
 
+### Device sessions and Device Audit
+
+Apply `017_device_sessions_and_audit.sql` before deploying these API/client changes.
+Login creates a server-side device session and returns `session` metadata (`id`,
+`createdAt`, `expiresAt`, `idleExpiresAt`) alongside the existing access/refresh
+tokens. New access tokens are bound to that session. Sessions expire after
+30 minutes without reported user interaction or 24 hours after login, whichever
+comes first. Refresh rotation never extends the absolute limit or counts as activity.
+`POST /api/v1/auth/activity` requires a Bearer access token and extends only the
+idle deadline, at most to the absolute deadline. Clients report foreground
+interactions at most once per minute; background requests are not activity.
+Offline clients cannot extend the server deadline. Expired/revoked sessions
+receive `401 SESSION_EXPIRED` and require login again. Existing unbound access
+tokens retain their short existing JWT lifetime; legacy refresh families require
+a fresh login. Password/role changes and account deactivation revoke device sessions.
+
+Clients send an installation/browser UUID in `X-Device-Id`, a platform
+(`ios`, `android`, `web`, `unknown`) in `X-Device-Platform`, and optionally a
+non-secret version in `X-App-Version`. This is not hardware fingerprinting.
+Requests without device headers receive a fresh, unknown device identity at login.
+
+Admin user management exposes **Device Audit** through
+`GET /api/v1/admin/users/device-audit`. System administrators can filter all
+organizations; organization administrators are restricted to their own.
+The response includes events, up to 100 matching sessions, paginated events,
+daily UTC counts and summary/error-rate metrics. Filters cover date range,
+user/device/session IDs, action, platform, outcome and text search.
+`format=csv` exports the same filters, neutralizes spreadsheet formulas, and
+rejects exports over 10,000 rows rather than silently truncating.
+
+The device audit records authenticated device login/logout, session
+refresh/expiry/revocation, sync, mutations, upload requests and API errors.
+Only route templates, status and device/user/session references are stored:
+no passwords, tokens, request bodies, OCR text, keystrokes, precise locations
+or activities outside this app. Failed attempts before authentication are not
+attributed to a user/device. This operational audit is separate from the
+existing compliance audit log, whose retention is unchanged.
+
+Device events/sessions older than 30 days are excluded and purged on audit
+access and login. The daily Vercel cron `/api/cron/device-audit-retention`
+also expires inactive sessions and purges old rows when the app is unused.
+Set **CRON_SECRET** (at least 32 random characters) in Vercel so its Bearer
+authorization protects that endpoint. On other hosts, schedule the same
+authenticated GET daily. Physical cleanup can lag by up to one daily run.
+This change does not apply the migration, set production secrets, or deploy.
+
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/api/v1/auth/login` | `{email,password,organizationSlug?}` → tokens, user, organizations, selected organization |

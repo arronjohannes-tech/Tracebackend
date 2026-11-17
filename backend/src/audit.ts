@@ -1,4 +1,4 @@
-export type AuditContext = { ip: string; headers: { "user-agent"?: string | undefined } };
+export type AuditContext = { ip: string; headers: { [key: string]: unknown; "user-agent"?: string | undefined } };
 import type { PoolClient } from "pg";
 import type { AuthContext } from "./types.js";
 

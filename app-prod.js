@@ -4,7 +4,7 @@ import {
   applyTranslations,
   translate,
 } from "./src/i18n.mjs?v=4";
-import { format } from "./src/i18n-prod.mjs?v=4";
+import { format } from "./src/i18n-prod.mjs?v=5";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
   backgroundAreas, backgroundResolution, backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection,
@@ -14,8 +14,17 @@ import {
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 import { initAccessManagement } from "./src/access-management.mjs?v=1";
 import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
-import { initPasswordRecovery } from "./src/password-recovery.mjs?v=1";
+import { initPasswordRecovery } from "./src/password-recovery.mjs?v=2";
 import { initGooglePlotMap } from "./src/google-plot-map.mjs?v=2";
+import {
+  DEVICE_ACTIVITY_THROTTLE_MS,
+  DEVICE_SESSION_ABSOLUTE_MS,
+  DEVICE_SESSION_IDLE_MS,
+  clearDeviceAuth,
+  deviceSessionExpired,
+  getOrCreateDeviceId,
+  isValidDeviceSession,
+} from "./src/device-session.mjs?v=1";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
 const CORRECTION_SCOPES = ["plot", "group", "all"];
@@ -76,6 +85,13 @@ const state = {
   editingShipmentId: null,
   deletingShipmentId: null,
 };
+const deviceId = getOrCreateDeviceId(localStorage);
+const appVersion = document.querySelector('meta[name="application-version"]')?.content;
+const deviceHeaders = () => ({
+  "X-Device-Id": deviceId,
+  "X-Device-Platform": "web",
+  ...(appVersion ? { "X-App-Version": appVersion } : {}),
+});
 
 class ApiError extends Error {
   constructor(message, status, code, details) {
@@ -124,12 +140,20 @@ const canDelete = () => canEdit("shipments") && userRoles().some((role) => ADMIN
 const accessToken = () => sessionStorage.getItem("accessToken");
 
 function saveSession(payload) {
+  if (!isValidDeviceSession(payload?.session)) {
+    throw new ApiError(t("prod.session.reauthenticate"), 401, "SESSION_REQUIRED");
+  }
   sessionStorage.setItem("accessToken", payload.accessToken);
   sessionStorage.setItem("refreshToken", payload.refreshToken);
+  sessionStorage.setItem("deviceSession", JSON.stringify(payload.session));
+  if (!sessionStorage.getItem("deviceSessionLastActivityAt")) {
+    sessionStorage.setItem("deviceSessionLastActivityAt", String(Date.now()));
+  }
   if (payload.selectedOrganizationId) {
     sessionStorage.setItem("selectedOrganizationId", payload.selectedOrganizationId);
   }
   if (payload.user) sessionStorage.setItem("user", JSON.stringify(payload.user));
+  scheduleSessionExpiry();
 }
 
 function storedUser() {
@@ -148,17 +172,155 @@ function refreshSession() {
     try {
       const response = await fetch("/api/v1/auth/refresh", {
         method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...deviceHeaders(),
+        },
         body: JSON.stringify({ refreshToken }),
       });
-      if (!response.ok) return false;
-      saveSession((await response.json()).data);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        if (payload?.error?.code === "SESSION_EXPIRED") expireDeviceSession();
+        return false;
+      }
+      const payload = await response.json();
+      if (!isValidDeviceSession(payload?.data?.session)) {
+        expireDeviceSession();
+        return false;
+      }
+      saveSession(payload.data);
       return true;
     } catch {
       return false;
     }
   })().finally(() => { refreshing = null; });
   return refreshing;
+}
+
+function storedDeviceSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem("deviceSession") ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+function sessionLastActivityAt() {
+  const parsed = Number(sessionStorage.getItem("deviceSessionLastActivityAt"));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+}
+
+function sessionDeadline() {
+  const session = storedDeviceSession();
+  if (!isValidDeviceSession(session)) return 0;
+  return Math.min(
+    Date.parse(session.expiresAt),
+    Date.parse(session.createdAt) + DEVICE_SESSION_ABSOLUTE_MS,
+    Date.parse(session.idleExpiresAt),
+    sessionLastActivityAt() + DEVICE_SESSION_IDLE_MS,
+  );
+}
+
+let sessionExpiryTimer = null;
+let lastActivityRequestAt = 0;
+let lastProactiveRefreshAt = 0;
+let activitySync = null;
+
+function scheduleSessionExpiry() {
+  clearTimeout(sessionExpiryTimer);
+  if (!accessToken()) return;
+  const deadline = sessionDeadline();
+  if (!deadline) {
+    expireDeviceSession();
+    return;
+  }
+  sessionExpiryTimer = setTimeout(() => {
+    if (deviceSessionExpired(storedDeviceSession(), sessionLastActivityAt())) {
+      expireDeviceSession();
+    } else {
+      scheduleSessionExpiry();
+    }
+  }, Math.max(0, deadline - Date.now()));
+}
+
+function expireDeviceSession() {
+  clearTimeout(sessionExpiryTimer);
+  if (!accessToken()) return;
+  registrationManagement.invalidate();
+  clearDeviceAuth(sessionStorage);
+  showLogin();
+  setAuthMessage(t("prod.session.expired"));
+}
+
+function tokenExpiresSoon() {
+  try {
+    const token = accessToken()?.split(".")[1];
+    if (!token) return false;
+    const claims = JSON.parse(atob(token.replace(/-/g, "+").replace(/_/g, "/")));
+    return Number(claims.exp) * 1000 <= Date.now() + 5 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+async function syncDeviceActivity() {
+  if (activitySync) return activitySync;
+  activitySync = (async () => {
+    const now = Date.now();
+    if (deviceSessionExpired(storedDeviceSession(), sessionLastActivityAt(), now)) {
+      expireDeviceSession();
+      return;
+    }
+    if (tokenExpiresSoon() && now - lastProactiveRefreshAt >= DEVICE_ACTIVITY_THROTTLE_MS) {
+      lastProactiveRefreshAt = now;
+      if (!await refreshSession()) return;
+    }
+    if (now - lastActivityRequestAt < DEVICE_ACTIVITY_THROTTLE_MS) return;
+    lastActivityRequestAt = now;
+    try {
+      const response = await fetch("/api/v1/auth/activity", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken()}`,
+          ...deviceHeaders(),
+          ...(state.organizationId ? { "X-Organization-Id": state.organizationId } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.status === 401) {
+        if (payload?.error?.code === "SESSION_EXPIRED" || !await refreshSession()) {
+          expireDeviceSession();
+        }
+        return;
+      }
+      if (!response.ok || !isValidDeviceSession(payload?.data?.session)) return;
+      sessionStorage.setItem("deviceSession", JSON.stringify(payload.data.session));
+      scheduleSessionExpiry();
+    } catch {
+      // Local idle and absolute deadlines remain authoritative while offline.
+    }
+  })().finally(() => { activitySync = null; });
+  return activitySync;
+}
+
+function recordDeviceActivity() {
+  if (!accessToken() || document.visibilityState !== "visible") return;
+  const now = Date.now();
+  if (deviceSessionExpired(storedDeviceSession(), sessionLastActivityAt(), now)) {
+    expireDeviceSession();
+    return;
+  }
+  sessionStorage.setItem("deviceSessionLastActivityAt", String(now));
+  scheduleSessionExpiry();
+  void syncDeviceActivity();
+}
+
+function checkDeviceSession() {
+  if (accessToken() && deviceSessionExpired(storedDeviceSession(), sessionLastActivityAt())) {
+    expireDeviceSession();
+  }
 }
 
 async function api(path, {
@@ -175,12 +337,20 @@ async function api(path, {
       Accept: "application/json",
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       ...headers,
+      ...deviceHeaders(),
       Authorization: `Bearer ${accessToken()}`,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let response = await send();
-  if (response.status === 401 && await refreshSession()) response = await send();
+  if (response.status === 401) {
+    const errorPayload = await response.clone().json().catch(() => null);
+    if (errorPayload?.error?.code === "SESSION_EXPIRED") {
+      expireDeviceSession();
+    } else if (await refreshSession()) {
+      response = await send();
+    }
+  }
   if (response.ok && responseType === "blob") return response.blob();
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -216,7 +386,7 @@ let toastTimer;
 const accessManagement = initAccessManagement({
   api, t, labelFor, escapeHtml, canRead, canEdit, currentUser: () => state.user, refresh: refreshWorkspace,
   reauthenticate: () => {
-    sessionStorage.clear();
+    clearDeviceAuth(sessionStorage);
     showLogin();
     setAuthMessage(t("prod.access.signInAgain"));
   },
@@ -319,7 +489,15 @@ async function reloadData() {
 async function loadWorkspace() {
   setAuthMessage(t("prod.login.loading"));
   try {
-    if (!accessToken()) throw new ApiError("", 401);
+    if (!accessToken() || !isValidDeviceSession(storedDeviceSession())) {
+      clearDeviceAuth(sessionStorage);
+      throw new ApiError("", 401);
+    }
+    if (deviceSessionExpired(storedDeviceSession(), sessionLastActivityAt())) {
+      expireDeviceSession();
+      return;
+    }
+    scheduleSessionExpiry();
     state.user = await api("/api/v1/auth/me");
     sessionStorage.setItem("user", JSON.stringify(state.user));
     await resolveOrganization();
@@ -330,7 +508,7 @@ async function loadWorkspace() {
     renderAll();
     showView(location.hash.slice(1) || "overview");
   } catch (error) {
-    if (error.status === 401) sessionStorage.clear();
+    if (error.status === 401) clearDeviceAuth(sessionStorage);
     showLogin();
     setAuthMessage(error.status === 401 && !error.message ? "" : describeError(error, "prod.common.loadFailed"));
   }
@@ -355,7 +533,7 @@ async function refreshWorkspace() {
     return registrationsRefreshed;
   } catch (error) {
     if (error.status !== 401) throw error;
-    sessionStorage.clear();
+    clearDeviceAuth(sessionStorage);
     showLogin();
     setAuthMessage(t("prod.access.signInAgain"));
   }
@@ -1962,6 +2140,7 @@ function closeAccountMenu() {
 
 async function logout() {
   registrationManagement.invalidate();
+  clearTimeout(sessionExpiryTimer);
   const refreshToken = sessionStorage.getItem("refreshToken");
   let serverLogoutFailed = false;
   if (refreshToken) {
@@ -1972,6 +2151,7 @@ async function logout() {
           Accept: "application/json",
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken()}`,
+          ...deviceHeaders(),
         },
         body: JSON.stringify({ refreshToken }),
       });
@@ -1980,7 +2160,7 @@ async function logout() {
       serverLogoutFailed = true;
     }
   }
-  sessionStorage.clear();
+  clearDeviceAuth(sessionStorage);
   showLogin();
   showToast(t(serverLogoutFailed ? "prod.account.signedOutLocal" : "prod.account.signedOut"));
 }
@@ -2087,6 +2267,14 @@ document.addEventListener("pointerdown", beginDrag);
 document.addEventListener("pointermove", moveDrag);
 document.addEventListener("pointerup", endDrag);
 document.addEventListener("pointercancel", endDrag);
+document.addEventListener("pointerdown", recordDeviceActivity, { passive: true });
+document.addEventListener("keydown", recordDeviceActivity);
+document.addEventListener("touchstart", recordDeviceActivity, { passive: true });
+document.addEventListener("wheel", recordDeviceActivity, { passive: true });
+document.addEventListener("input", recordDeviceActivity);
+document.addEventListener("change", recordDeviceActivity);
+document.addEventListener("visibilitychange", checkDeviceSession);
+window.addEventListener("focus", checkDeviceSession);
 document.addEventListener("input", (event) => {
   if (event.target.id === "geo-note" && state.edit) state.edit.note = event.target.value;
 });
@@ -2144,7 +2332,11 @@ $("#tracehub-login-form").addEventListener("submit", async (event) => {
   try {
     const response = await fetch("/api/v1/auth/login", {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...deviceHeaders(),
+      },
       body: JSON.stringify({
         email: form.get("email"),
         password: form.get("password"),
@@ -2153,12 +2345,12 @@ $("#tracehub-login-form").addEventListener("submit", async (event) => {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok || !body?.data) throw new Error(body?.error?.message ?? t("prod.login.failed"));
-    sessionStorage.clear();
+    clearDeviceAuth(sessionStorage);
     saveSession(body.data);
     loginForm.reset();
     await loadWorkspace();
   } catch (error) {
-    sessionStorage.clear();
+    clearDeviceAuth(sessionStorage);
     setAuthMessage(error.message);
   }
 });

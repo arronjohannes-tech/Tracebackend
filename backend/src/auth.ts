@@ -7,6 +7,7 @@ import { AppError } from "./errors.js";
 import { queryOne, withContext } from "./db.js";
 import { assertOrganizationHeader } from "./services/auth-service.js";
 import { assertPermission, loadPermissions, routeSection } from "./permissions.js";
+import { checkDeviceSession } from "./services/device-session-service.js";
 export { organizationSelection, assertOrganizationHeader } from "./services/auth-service.js";
 export { registerAuthRoutes } from "./controllers/auth-controller.js";
 export function createAuthenticator(pool: Pool, config: AppConfig) {
@@ -22,6 +23,7 @@ export function createAuthenticator(pool: Pool, config: AppConfig) {
       throw new AppError(401, "INVALID_ACCESS_TOKEN", "The access token is invalid or expired.");
     }
     assertOrganizationHeader(request.headers["x-organization-id"], claims);
+    if (claims.sessionId) await checkDeviceSession(pool, claims.sessionId, claims.userId);
     const current = await withContext(pool, "system", (client) =>
       queryOne<{ active: boolean; organization_active: boolean; token_version: number; organization_id: string | null; role: Role; assigned_roles: Role[] }>(
         client,
@@ -40,8 +42,8 @@ export function createAuthenticator(pool: Pool, config: AppConfig) {
     claims.roles = current.assigned_roles ?? [current.role];
     claims.permissions = await withContext(pool, "system", (client) =>
       loadPermissions(client, claims.roles!, current.organization_id));
+    request.auth = claims;
     const section = routeSection(request.url.split("?")[0]!);
     if (section) assertPermission(claims, section, !["GET", "HEAD"].includes(request.method));
-    request.auth = claims;
   };
 }

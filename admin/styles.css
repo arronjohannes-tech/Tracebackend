@@ -42,6 +42,11 @@ th, td { padding: .65rem; border-bottom: 1px solid #dce5df; text-align: left; ve
 .badge.pending, .badge.rejected { background: #f5dfc5; }
 .actions { display: flex; gap: .4rem; }
 .hint { color: #596c61; font-size: .88rem; }
+.device-audit-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #dce5df; }
+.audit-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; margin: 1rem 0; }
+.audit-summary article { padding: .8rem; border-radius: 8px; background: #eef4ef; }
+.audit-summary strong { display: block; font-size: 1.25rem; }
+.audit-pagination { align-items: center; justify-content: flex-end; margin-top: 1rem; }
 fieldset { display: grid; gap: .8rem; margin: 0; padding: 1rem; border: 1px solid #dce5df; border-radius: 10px; }
 legend { padding: 0 .4rem; font-weight: 700; color: #173f2e; }
 .status-line { margin: .25rem 0 1rem; padding: .6rem .8rem; border-radius: 8px; background: #eef4ef; font-size: .9rem; }

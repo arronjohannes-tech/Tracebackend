@@ -3,6 +3,7 @@ import "@formatjs/intl-displaynames/locale-data/de.js";
 import "@formatjs/intl-displaynames/locale-data/en.js";
 import "@formatjs/intl-displaynames/locale-data/am.js";
 import "@formatjs/intl-displaynames/locale-data/ti.js";
+import "@formatjs/intl-displaynames/locale-data/om.js";
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/max";
 
 export type PhoneCountry = { code: CountryCode; name: string; callingCode: string; flag: string };

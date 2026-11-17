@@ -38,7 +38,13 @@ test("password recovery handles initial and same-document reset links", async (c
   ]);
   const events = element();
   const requests = [];
-  let sessionClears = 0;
+  const sessionValues = new Map([
+    ["accessToken", "access-token"],
+    ["refreshToken", "refresh-token"],
+    ["deviceSession", "session"],
+    ["localDraft", "keep"],
+  ]);
+  let clearCalls = 0;
   let resetTransitions = 0;
   Object.assign(globalThis, {
     document: { querySelector: (selector) => nodes.get(selector), querySelectorAll: () => [back] },
@@ -48,7 +54,12 @@ test("password recovery handles initial and same-document reset links", async (c
       assert.equal(url, "/index-prod.html?lang=de");
       location.hash = "";
     } },
-    sessionStorage: { clear() { sessionClears++; } },
+    sessionStorage: {
+      getItem(key) { return sessionValues.get(key) ?? null; },
+      setItem(key, value) { sessionValues.set(key, value); },
+      removeItem(key) { sessionValues.delete(key); },
+      clear() { clearCalls++; sessionValues.clear(); },
+    },
     fetch: async (path, options) => {
       requests.push({ path, body: JSON.parse(options.body) });
       return { ok: true, json: async () => ({ data: { reset: true } }) };
@@ -89,5 +100,9 @@ test("password recovery handles initial and same-document reset links", async (c
   assert.equal(reset.hidden, true);
   assert.equal(reset.elements.password.value, "");
   assert.equal(status.textContent, "prod.reset.success");
-  assert.equal(sessionClears, 3);
+  assert.equal(clearCalls, 0);
+  assert.equal(sessionValues.has("accessToken"), false);
+  assert.equal(sessionValues.has("refreshToken"), false);
+  assert.equal(sessionValues.has("deviceSession"), false);
+  assert.equal(sessionValues.get("localDraft"), "keep");
 });

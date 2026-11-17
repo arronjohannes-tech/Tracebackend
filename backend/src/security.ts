@@ -64,6 +64,7 @@ export async function signAccessToken(
     org: auth.organizationId,
     role: auth.role,
     ver: auth.tokenVersion,
+    ...(auth.sessionId ? { sid: auth.sessionId } : {}),
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(auth.userId)
@@ -87,7 +88,8 @@ export async function verifyAccessToken(
     !payload.sub ||
     typeof payload.role !== "string" ||
     typeof payload.ver !== "number" ||
-    (payload.org !== null && typeof payload.org !== "string")
+    (payload.org !== null && typeof payload.org !== "string") ||
+    (payload.sid !== undefined && (typeof payload.sid !== "string" || !/^[0-9a-f-]{36}$/i.test(payload.sid)))
   ) {
     throw new Error("Invalid access token claims.");
   }
@@ -96,6 +98,7 @@ export async function verifyAccessToken(
     organizationId: payload.org as string | null,
     role: payload.role as AuthContext["role"],
     tokenVersion: payload.ver,
+    ...(typeof payload.sid === "string" ? { sessionId: payload.sid } : {}),
   };
 }
 

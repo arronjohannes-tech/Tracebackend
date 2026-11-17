@@ -132,6 +132,12 @@ test("supplier registration consumes its invite and returns a login session", as
         passwordHash = String(values[3]);
         return { rows: [{ id: userId }] };
       }
+      if (text.includes("INSERT INTO device_sessions")) {
+        return { rows: [{
+          id: values[0], user_id: values[1], created_at: new Date(), last_active_at: new Date(),
+          expires_at: new Date(Date.now() + 86_400_000), idle_expires_at: new Date(Date.now() + 1_800_000), ended_at: null,
+        }] };
+      }
       if (text.includes("UPDATE supplier_invitations")) consumed = true;
       if (text.includes("DELETE FROM supplier_invitations")) deletedInvitations += 1;
       if (text.includes("FROM users u")) return {

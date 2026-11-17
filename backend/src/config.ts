@@ -30,6 +30,7 @@ const schema = z.object({
   PUBLIC_BASE_URL: z.string().url().default("http://127.0.0.1:4300"),
   TRACEHUB_BASE_URL: z.string().url().default("http://127.0.0.1:4173"),
   RESEND_API_KEY: z.string().min(1).optional(),
+  CRON_SECRET: z.string().min(32).optional(),
   INVITATION_FROM_EMAIL: z.string().email().optional(),
   STORAGE_DIR: z.string().default("./storage"),
   STORAGE_DRIVER: z.enum(["local", "s3"]).optional(),

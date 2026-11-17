@@ -48,6 +48,24 @@ test("state keys isolate users and organizations during tenant switches", async 
   assert.equal((await repository.loadState(otherUser)).cursor, null);
 });
 
+test("returning to the same user waits for pending draft writes and restores the latest data", async () => {
+  const storage = new MemoryStorage();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const setItem = storage.setItem.bind(storage);
+  storage.setItem = async (key, value) => { await gate; await setItem(key, value); };
+  const repository = createScopedStateRepository(storage);
+  const scope = { userId: "user-1", organizationId: "org-a" };
+  const first = repository.saveState(scope, { ...emptyState(), cursor: "older" });
+  const latest = { ...emptyState(), cursor: "latest" };
+  const second = repository.saveState(scope, latest);
+  const restored = repository.loadState(scope);
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(await restored, latest);
+  assert.equal((await repository.loadState({ ...scope, userId: "someone-else" })).cursor, null);
+});
+
 test("unscoped legacy values are quarantined and every authenticated scope starts empty", async () => {
   const storage = new MemoryStorage();
   const repository = createScopedStateRepository(storage);

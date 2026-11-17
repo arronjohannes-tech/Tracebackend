@@ -10,6 +10,7 @@ import type {
   Shipment,
   Supplier,
 } from "./domain";
+import { deviceSessionExpired } from "./sessionPolicy";
 
 type SuccessEnvelope<T> = { data: T; meta?: Record<string, unknown> };
 type ErrorEnvelope = {
@@ -29,6 +30,7 @@ export class ApiError extends Error {
 }
 
 type AuthPayload = {
+  session?: import("./sessionPolicy").DeviceSession;
   accessToken: string;
   refreshToken: string;
   expiresIn?: number;
@@ -47,12 +49,21 @@ let currentSession: AuthSession | null = null;
 let sessionListener: SessionListener | null = null;
 let refreshPromise: Promise<AuthSession> | null = null;
 let sessionGeneration = 0;
+let deviceHeaders: Record<string, string> = {};
+let lastActivitySent = 0;
+let activityPromise: Promise<void> | null = null;
+
+export function configureDevice(id: string, platform: string, appVersion: string): void {
+  deviceHeaders = { "X-Device-Id": id, "X-Device-Platform": platform, "X-App-Version": appVersion };
+}
 
 export function configureApiSession(
   session: AuthSession | null,
   listener: SessionListener,
 ): void {
   sessionGeneration++;
+  lastActivitySent = 0;
+  activityPromise = null;
   refreshPromise = null;
   currentSession = session;
   sessionListener = listener;
@@ -78,6 +89,7 @@ function toSession(payload: AuthPayload, previous?: AuthSession): AuthSession {
     user: payload.user ?? previous?.user,
     organizations,
     selectedOrganizationId: organizations.some(({ id }) => id === selected) ? selected : null,
+    ...(payload.session ? { session: payload.session } : previous?.session ? { session: previous.session } : {}),
   };
 }
 
@@ -98,13 +110,17 @@ async function refreshAccessToken(): Promise<AuthSession> {
       body: JSON.stringify({ refreshToken: previous.refreshToken }),
     }, false, false)
       .then(async (payload) => {
-        if (generation !== sessionGeneration || currentSession !== previous) throw new ApiError("AUTH_SCOPE_CHANGED", "The session changed during refresh.", 409);
-        const session = toSession(payload, previous);
+        if (generation !== sessionGeneration || !currentSession ||
+            currentSession.user.id !== previous.user.id ||
+            currentSession.selectedOrganizationId !== previous.selectedOrganizationId) {
+          throw new ApiError("AUTH_SCOPE_CHANGED", "The session changed during refresh.", 409);
+        }
+        const session = toSession(payload, currentSession);
         await updateSession(session);
         return session;
       })
       .catch(async (error) => {
-        if (generation === sessionGeneration && error instanceof ApiError && error.status === 401) await updateSession(null);
+        if (generation === sessionGeneration && error instanceof ApiError && error.status === 401) await expireSession();
         throw error;
       })
       .finally(() => {
@@ -121,6 +137,7 @@ export async function getCurrentAuthHeaders(
   if (!session) {
     throw new ApiError("UNAUTHENTICATED", "Authentication is required.", 401);
   }
+  await enforceSessionDeadline();
   if (!session.selectedOrganizationId) {
     throw new ApiError("ORGANIZATION_REQUIRED", "Select an organization.", 400);
   }
@@ -166,6 +183,7 @@ async function request<T>(
     signal: controller.signal,
     headers: {
       Accept: "application/json",
+      ...deviceHeaders,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...authHeaders,
       ...init?.headers,
@@ -173,6 +191,11 @@ async function request<T>(
   });
   } finally { clearTimeout(timer); }
   if (protectedRequest && response.status === 401 && retryUnauthorized) {
+    const errorResponse = await response.clone().json().catch(() => null);
+    if (errorResponse?.error?.code === "SESSION_EXPIRED" || errorResponse?.error?.code === "SESSION_REQUIRED") {
+      await expireSession();
+      throw new ApiError(errorResponse.error.code, errorResponse.error.message, 401);
+    }
     await refreshAccessToken();
     return request<T>(path, init, true, false, expectedScope);
   }
@@ -236,20 +259,66 @@ export function activateAccount(token: string, password: string): Promise<{ mess
 }
 
 export async function refreshSession(): Promise<AuthSession> {
+  await enforceSessionDeadline();
   return refreshAccessToken();
+}
+
+export async function expireSession(): Promise<void> {
+  sessionGeneration++;
+  refreshPromise = null;
+  await updateSession(null);
+}
+
+export async function enforceSessionDeadline(): Promise<void> {
+  if (currentSession?.session && deviceSessionExpired(currentSession.session)) {
+    await expireSession();
+    throw new ApiError("SESSION_EXPIRED", "Your session has ended. Sign in again.", 401);
+  }
+}
+
+export async function recordSessionActivity(): Promise<void> {
+  await enforceSessionDeadline();
+  if (!currentSession?.session || Date.now() - lastActivitySent < 60_000 || activityPromise) return;
+  const previous = currentSession;
+  const generation = sessionGeneration;
+  lastActivitySent = Date.now();
+  // Only actual interactions call this function; refreshes and sync do not extend idle time.
+  activityPromise = (async () => {
+    if (Date.parse(previous.accessTokenExpiresAt) <= Date.now() + 60_000) await refreshAccessToken();
+    if (!currentSession || generation !== sessionGeneration) return;
+    const active = currentSession;
+    const result = await request<{ session: import("./sessionPolicy").DeviceSession }>(
+      "/api/v1/auth/activity", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${active.accessToken}` },
+      }, false,
+    );
+    if (generation !== sessionGeneration || !currentSession) return;
+    if (result.session.id !== active.session?.id) throw new ApiError("AUTH_SCOPE_CHANGED", "Session mismatch.", 409);
+    lastActivitySent = Date.now();
+    await updateSession({ ...currentSession, session: result.session });
+  })().catch(async (error: unknown) => {
+    if (generation === sessionGeneration && error instanceof ApiError && error.status === 401) await expireSession();
+    throw error;
+  }).finally(() => { if (generation === sessionGeneration) activityPromise = null; });
+  return activityPromise;
 }
 
 export async function logout(): Promise<void> {
   const refreshToken = currentSession?.refreshToken;
   try {
     if (currentSession) {
+      await enforceSessionDeadline();
+      if (Date.parse(currentSession.accessTokenExpiresAt) <= Date.now() + 15_000) await refreshAccessToken();
+      if (!currentSession) return;
       await request<void>("/api/v1/auth/logout", {
         method: "POST",
         body: JSON.stringify({ refreshToken }),
-      });
+        headers: { Authorization: `Bearer ${currentSession.accessToken}` },
+      }, false);
     }
   } finally {
-    await updateSession(null);
+    await expireSession();
   }
 }
 

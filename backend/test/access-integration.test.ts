@@ -17,8 +17,10 @@ import { createUserManagementService, createUserSchema, updateUserSchema } from 
 import { roles, type AuthContext } from "../src/types.js";
 import { createRegistrationService, registrationSchema, registrationListSchema, registrationApprovalSchema } from "../src/services/registration-service.js";
 import { createGoogleMapsService } from "../src/services/google-maps-service.js";
+import { getDeviceAudit, deviceAuditQuerySchema } from "../src/services/device-audit-service.js";
+import { pruneDeviceAudit } from "../src/services/device-session-service.js";
 
-test("user lifecycle, role isolation and reset tokens work with real PostgreSQL", { skip: process.platform !== "win32", timeout: 300_000 }, async (t) => {
+test("user lifecycle, role isolation and reset tokens work with real PostgreSQL", { skip: process.platform !== "win32", timeout: 600_000 }, async (t) => {
   const { initdb, postgres, pg_ctl } = await import("@embedded-postgres/windows-x64");
   const root = path.resolve(".test-runtime", randomUUID());
   const data = path.join(root, "database");
@@ -64,7 +66,8 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
         UNIQUE(organization_id,email),
         CHECK ((role='system_admin' AND organization_id IS NULL) OR
           (role<>'system_admin' AND organization_id IS NOT NULL)));
-      CREATE TABLE refresh_tokens(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,revoked_at timestamptz);
+      CREATE TABLE refresh_tokens(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid,revoked_at timestamptz,
+        family_id uuid,organization_id uuid,token_hash text,rotated_from_id uuid,expires_at timestamptz,used_at timestamptz);
       CREATE TABLE documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid,organization_id uuid,upload_expires_at timestamptz);
       CREATE TABLE audit_logs(organization_id uuid,actor_user_id uuid,action text,resource_type text,resource_id text,
         ip inet,user_agent text,details jsonb);
@@ -79,7 +82,7 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
     await db.query(`INSERT INTO users(id,organization_id,email,display_name,password_hash,role)
       VALUES($1,$2,'admin@example.com','Admin',$3,'org_admin'),($4,$2,'legacy@example.com','Legacy',$3,'auditor')`,
     [adminId, org, passwordHash, legacyId]);
-    for (const migration of ["010_user_permissions.sql", "011_password_reset.sql", "012_mobile_registration.sql"]) {
+    for (const migration of ["010_user_permissions.sql", "011_password_reset.sql", "012_mobile_registration.sql", "017_device_sessions_and_audit.sql"]) {
       await db.query(await readFile(new URL("../migrations/" + migration, import.meta.url), "utf8"));
     }
     await db.query("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO test_app; GRANT USAGE ON SCHEMA public TO test_app");
@@ -95,6 +98,7 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
       REFRESH_TOKEN_TTL_DAYS: 30, CONFIG_ENCRYPTION_KEY: randomBytes(32), PUBLIC_BASE_URL: "http://127.0.0.1",
       TRACEHUB_BASE_URL: "http://127.0.0.1", STORAGE_DIR: root, ADMIN_ORIGIN: "http://127.0.0.1",
       RESEND_API_KEY: "test-key", INVITATION_FROM_EMAIL: "test@example.com",
+      CRON_SECRET: "test-cron-secret-at-least-thirty-two-characters",
     };
     const app = await buildApp(config, pool);
     t.after(() => app.close());
@@ -102,6 +106,78 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
       method: "GET", url, headers: { authorization: `Bearer ${await signAccessToken(config, auth)}` },
     });
     let managedId = "";
+    await t.test("device sessions rotate without extending absolute lifetime, expire, revoke and isolate audit data", async () => {
+      const deviceId = randomUUID();
+      const login = async (email = "admin@example.com") => {
+        const result = await app.inject({
+          method: "POST", url: "/api/v1/auth/login",
+          headers: { "x-device-id": deviceId, "x-device-platform": "ios", "x-app-version": "0.1.0" },
+          payload: { email, password: "integration-test-password" },
+        });
+        assert.equal(result.statusCode, 200, result.body);
+        return result.json().data;
+      };
+      const authRequest = (token: string, method: "GET" | "POST" | "PUT", url: string, payload?: object) =>
+        app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, ...(payload ? { payload } : {}) });
+      const first = await login();
+      assert.equal(Date.parse(first.session.expiresAt) - Date.parse(first.session.createdAt), 86_400_000);
+      assert.equal(Date.parse(first.session.idleExpiresAt) - Date.parse(first.session.createdAt), 1_800_000);
+      await db.query("UPDATE device_sessions SET idle_expires_at=now()+interval '5 minutes' WHERE id=$1", [first.session.id]);
+      const heartbeat = await authRequest(first.accessToken, "POST", "/api/v1/auth/activity");
+      assert.equal(heartbeat.statusCode, 200, heartbeat.body);
+      assert.ok(Date.parse(heartbeat.json().data.session.idleExpiresAt) > Date.now() + 29 * 60_000);
+      const refresh = await app.inject({ method: "POST", url: "/api/v1/auth/refresh", payload: { refreshToken: first.refreshToken } });
+      assert.equal(refresh.statusCode, 200, refresh.body);
+      const rotated = refresh.json().data;
+      assert.equal(rotated.session.id, first.session.id);
+      assert.equal(rotated.session.expiresAt, first.session.expiresAt);
+      assert.notEqual(rotated.refreshToken, first.refreshToken);
+      await db.query("UPDATE device_sessions SET idle_expires_at=now()-interval '1 second' WHERE id=$1", [first.session.id]);
+      assert.equal((await authRequest(rotated.accessToken, "GET", "/api/v1/auth/me")).json().error.code, "SESSION_EXPIRED");
+      assert.equal((await app.inject({ method: "POST", url: "/api/v1/auth/refresh", payload: { refreshToken: rotated.refreshToken } })).statusCode, 401);
+      assert.equal((await db.query("SELECT count(*)::int AS n FROM device_events WHERE session_id=$1 AND action='session.expired'", [first.session.id])).rows[0].n, 1);
+      const absolute = await login();
+      await db.query("UPDATE device_sessions SET expires_at=now()-interval '1 second',idle_expires_at=now()+interval '10 minutes' WHERE id=$1", [absolute.session.id]);
+      assert.equal((await authRequest(absolute.accessToken, "POST", "/api/v1/auth/activity")).statusCode, 401);
+      const logout = await login();
+      assert.equal((await authRequest(logout.accessToken, "POST", "/api/v1/auth/logout", { refreshToken: logout.refreshToken })).statusCode, 200);
+      assert.equal((await authRequest(logout.accessToken, "GET", "/api/v1/auth/me")).statusCode, 401);
+      const reuse = await login();
+      const refreshReuse = () => app.inject({ method: "POST", url: "/api/v1/auth/refresh", payload: { refreshToken: reuse.refreshToken } });
+      const fresh = (await refreshReuse()).json().data;
+      assert.equal((await refreshReuse()).json().error.code, "REFRESH_TOKEN_REUSE");
+      assert.equal((await authRequest(fresh.accessToken, "GET", "/api/v1/auth/me")).statusCode, 401);
+
+      const foreignId = randomUUID();
+      await db.query(`INSERT INTO users(id,organization_id,email,display_name,password_hash,role,assigned_roles)
+        VALUES($1,$2,'foreign-device@example.com','=UNTRUSTED',$3,'field_agent',ARRAY['field_agent']::user_role[])`,
+      [foreignId, foreignOrg, passwordHash]);
+      const foreign = await login("foreign-device@example.com");
+      const current = await login();
+      const failedChange = await authRequest(current.accessToken, "PUT", `/api/v1/admin/organizations/${org}/config`, {});
+      assert.equal(failedChange.statusCode, 400, failedChange.body);
+      const endpoint = "/api/v1/admin/users/device-audit";
+      const listed = await authRequest(current.accessToken, "GET", endpoint);
+      assert.equal(listed.statusCode, 200, listed.body);
+      const listing = listed.json().data;
+      assert.ok(listing.events.some((event: { action: string }) => event.action === "change.error"));
+      assert.ok(listing.summary.errors > 0);
+      assert.ok(listing.events.every((event: { organizationId: string }) => event.organizationId === org));
+      assert.equal(JSON.stringify(listing).includes(current.accessToken), false);
+      assert.equal((await authRequest(current.accessToken, "GET", `${endpoint}?organizationId=${foreignOrg}`)).statusCode, 403);
+      assert.equal((await authRequest(foreign.accessToken, "GET", endpoint)).statusCode, 403);
+      const systemView = await getDeviceAudit(pool!, system, deviceAuditQuerySchema.parse({ organizationId: foreignOrg, format: "csv" }));
+      assert.equal(typeof systemView, "string");
+      assert.match(String(systemView), /'=UNTRUSTED/);
+      const filtered = await authRequest(current.accessToken, "GET", `${endpoint}?outcome=error&limit=1`);
+      assert.equal(filtered.json().data.events.length, 1);
+      assert.ok(filtered.json().data.events[0].statusCode >= 400);
+      await db.query("UPDATE device_sessions SET created_at=now()-interval '31 days' WHERE id=$1", [first.session.id]);
+      await withContext(pool!, "system", pruneDeviceAudit);
+      assert.equal((await db.query("SELECT id FROM device_sessions WHERE id=$1", [first.session.id])).rowCount, 0);
+      assert.equal((await app.inject({ method: "GET", url: "/api/cron/device-audit-retention" })).statusCode, 401);
+      assert.equal((await app.inject({ method: "GET", url: "/api/cron/device-audit-retention", headers: { authorization: `Bearer ${config.CRON_SECRET}` } })).statusCode, 200);
+    });
     await t.test("Google Maps migration and encrypted settings preserve tenant isolation in PostgreSQL", async () => {
       await db.query(`
         CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$

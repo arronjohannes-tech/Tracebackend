@@ -74,6 +74,51 @@
             <button type="submit">Benutzer anlegen</button>
           </form>
           <div id="users"></div>
+          <section class="device-audit-section" aria-labelledby="device-audit-title">
+            <h3 id="device-audit-title">Device Audit</h3>
+            <p class="hint">Sitzungen, Anmeldungen, Synchronisierung und Änderungen der letzten 30 Tage. Keine
+              Tastatureingaben oder eingegebenen Inhalte werden erfasst.</p>
+            <form id="device-audit-filters" class="form-grid">
+              <label>Suche<input name="search" maxlength="120" placeholder="Benutzer, Aktion, Pfad"></label>
+              <label>Benutzer-ID<input name="userId" placeholder="UUID"></label>
+              <label>Geräte-ID<input name="deviceId" placeholder="UUID"></label>
+              <label>Sitzungs-ID<input name="sessionId" placeholder="UUID"></label>
+              <label>Aktion<input name="action" placeholder="z. B. login, sync"></label>
+              <label>Plattform
+                <select name="platform">
+                  <option value="">Alle</option><option value="web">Web</option><option value="ios">iOS</option>
+                  <option value="android">Android</option><option value="unknown">Unbekannt</option>
+                </select>
+              </label>
+              <label>Ergebnis
+                <select name="outcome">
+                  <option value="">Alle</option><option value="success">Erfolg</option><option value="error">Fehler</option>
+                </select>
+              </label>
+              <label>Von<input name="from" type="datetime-local"></label>
+              <label>Bis<input name="to" type="datetime-local"></label>
+              <label>Einträge je Seite
+                <select name="limit"><option>25</option><option selected>50</option><option>100</option></select>
+              </label>
+              <div class="actions">
+                <button type="submit">Filtern</button>
+                <button type="button" class="secondary" id="device-audit-csv">CSV exportieren</button>
+              </div>
+            </form>
+            <p id="device-audit-status" class="status-line" role="status"></p>
+            <div id="device-audit-summary" class="audit-summary"></div>
+            <h4>Geräte und Sitzungen</h4>
+            <div id="device-audit-sessions"></div>
+            <h4>Aktivitätsverlauf</h4>
+            <div id="device-audit-timeline"></div>
+            <h4>Ereignisse</h4>
+            <div id="device-audit-events"></div>
+            <div class="actions audit-pagination">
+              <button type="button" class="secondary" id="device-audit-previous">Zurück</button>
+              <span id="device-audit-page" class="hint"></span>
+              <button type="button" class="secondary" id="device-audit-next">Weiter</button>
+            </div>
+          </section>
         </section>
 
         <section id="tab-config" class="card tab-panel hidden">
@@ -306,7 +351,7 @@
     </div>
     <div id="message" role="status" aria-live="polite"></div>
   </main>
-  <script type="module" src="/admin/app.js?v=2"></script>
+  <script type="module" src="/admin/app.js?v=3"></script>
 </body>
 
 </html>

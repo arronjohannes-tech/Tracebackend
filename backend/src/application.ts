@@ -20,6 +20,9 @@ import { registerCopernicusRoutes } from "./controllers/copernicus-controller.js
 import { registerPlotRoutes } from "./controllers/plot-controller.js";
 import { registerRoleRoutes } from "./controllers/role-controller.js";
 import { registerRegistrationRoutes } from "./controllers/registration-controller.js";
+import { registerDeviceAuditRoutes } from "./controllers/device-audit-controller.js";
+import { recordDeviceEvent } from "./services/device-session-service.js";
+import { withContext } from "./db.js";
 
 export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyInstance> {
   const app = Fastify({
@@ -64,6 +67,9 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
       "Idempotency-Key",
       "X-Organization-Id",
       "X-Upload-Token",
+      "X-Device-Id",
+      "X-Device-Platform",
+      "X-App-Version",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
@@ -113,11 +119,27 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
   await registerAdminRoutes(app, pool, config, authenticate);
   await registerRoleRoutes(app, pool, authenticate);
   await registerRegistrationRoutes(app, pool, config, authenticate);
+  await registerDeviceAuditRoutes(app, pool, config, authenticate);
   await registerCopernicusRoutes(app, pool, config, authenticate);
   await registerSyncRoutes(app, pool, authenticate);
   await registerSupplierInvitationRoutes(app, pool, config, authenticate);
   await registerDocumentRoutes(app, pool, config, authenticate);
   await registerOperationRoutes(app, pool, config, authenticate);
+
+  app.addHook("onResponse", async (request, reply) => {
+    const sessionId = request.auth?.sessionId;
+    const route = request.routeOptions.url;
+    if (!sessionId || !route || route.startsWith("/api/v1/auth/") ||
+        (reply.statusCode < 400 && ["GET", "HEAD", "OPTIONS"].includes(request.method))) return;
+    const category = route.includes("/sync") ? "sync" : route.includes("/documents") ? "upload" : "change";
+    const action = reply.statusCode >= 400 ? `${category}.error` : `${category}.success`;
+    try {
+      await withContext(pool, "system", (client) =>
+        recordDeviceEvent(client, sessionId, action, reply.statusCode, request.method, route));
+    } catch (error) {
+      request.log.error({ err: error, sessionId }, "Device audit event could not be persisted");
+    }
+  });
 
   app.setNotFoundHandler((_request, reply) =>
     reply.code(404).send({ error: { code: "NOT_FOUND", message: "Route not found." } }));

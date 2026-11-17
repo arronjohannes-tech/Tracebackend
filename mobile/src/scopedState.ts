@@ -43,6 +43,7 @@ export function emptyState(): PersistedState {
 
 export function createScopedStateRepository(storage: StateStorage) {
   let quarantineRun: Promise<void> | null = null;
+  const pendingWrites = new Map<string, Promise<void>>();
 
   function quarantineLegacyState(): Promise<void> {
     if (!quarantineRun) {
@@ -110,13 +111,19 @@ export function createScopedStateRepository(storage: StateStorage) {
     async loadState(scope: StateScope): Promise<PersistedState> {
       await quarantineLegacyState();
       const scopeKey = getStateStorageKey(scope);
+      await pendingWrites.get(scopeKey);
       const existing = await storage.getItem(scopeKey);
       if (existing) return JSON.parse(existing) as PersistedState;
       return emptyState();
     },
 
     saveState(scope: StateScope, state: PersistedState): Promise<void> {
-      return storage.setItem(getStateStorageKey(scope), JSON.stringify(state));
+      const key = getStateStorageKey(scope);
+      const value = JSON.stringify(state);
+      const previous = pendingWrites.get(key) ?? Promise.resolve();
+      const write = previous.catch(() => undefined).then(() => storage.setItem(key, value));
+      pendingWrites.set(key, write);
+      return write;
     },
   };
 }

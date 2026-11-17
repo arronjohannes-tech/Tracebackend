@@ -1,8 +1,9 @@
-export const languages = ["de", "en", "am", "ti"] as const;
+export const languages = ["de", "en", "am", "ti", "om"] as const;
 export type Language = (typeof languages)[number];
 
 export type Translation = {
   languageName: string;
+  userAccount: string;
   languageCode: string;
   chooseLanguage: string;
   languageHint: string;
@@ -199,6 +200,7 @@ export type Translation = {
 
 export const translations = {
   de: {
+    userAccount: "Benutzerkonto",
     languageName: "Deutsch", languageCode: "DE", chooseLanguage: "Sprache auswählen",
     languageHint: "Die Auswahl wird auf diesem Gerät gespeichert.", close: "Schließen",
     brandSubtitle: "Kaffee-Nachweise",
@@ -315,6 +317,7 @@ export const translations = {
     alerts: { required: "Bitte alle erforderlichen Felder ausfüllen.", saved: "Offline gespeichert.", storageError: "Lokale Daten konnten nicht sicher gespeichert werden." },
   },
   en: {
+    userAccount: "User account",
     languageName: "English", languageCode: "EN", chooseLanguage: "Choose language",
     languageHint: "The selection is saved on this device.", close: "Close",
     brandSubtitle: "Coffee Evidence",
@@ -430,6 +433,7 @@ export const translations = {
     alerts: { required: "Complete all required fields.", saved: "Saved offline.", storageError: "Local data could not be stored safely." },
   },
   am: {
+    userAccount: "የተጠቃሚ መለያ",
     languageName: "አማርኛ", languageCode: "አማ", chooseLanguage: "ቋንቋ ይምረጡ",
     languageHint: "ምርጫው በዚህ መሣሪያ ላይ ይቀመጣል።", close: "ዝጋ", brandSubtitle: "የቡና ማስረጃ",
     auth: {
@@ -545,6 +549,7 @@ export const translations = {
     alerts: { required: "እባክዎ ሁሉንም አስፈላጊ መስኮች ይሙሉ።", saved: "ከመስመር ውጭ ተቀምጧል።", storageError: "የአካባቢ ውሂብ በደህንነት ሊቀመጥ አልቻለም።" },
   },
   ti: {
+    userAccount: "ናይ ተጠቃሚ መለያ",
     languageName: "ትግርኛ", languageCode: "ትግ", chooseLanguage: "ቋንቋ ምረጹ",
     languageHint: "እቲ ምርጫ ኣብዚ መሳርሒ ይዕቀብ።", close: "ዕጸው", brandSubtitle: "መርትዖ ቡን",
     auth: {
@@ -658,6 +663,117 @@ export const translations = {
       body: "GPSን ውልቃዊ ሓበሬታን ብፍቓድ ጥራይ መዝግቡ። ናይ መሳርሒ ለውጥታት ምትእስሳር ክሳብ ዝረጋገጽ ይጸንሑ። ግጭታት ብራስ-ሰር ኣይትክኡን።",
     },
     alerts: { required: "በጃኹም ኩሎም ዘድልዩ ቦታታት ምልኡ።", saved: "ካብ መስመር ወጻኢ ተዓቂቡ።", storageError: "ናይ መሳርሒ ዳታ ብውሕስነት ክዕቀብ ኣይከኣለን።" },
+  },
+  om: {
+    userAccount: "Herrega fayyadamaa",
+    languageName: "Afaan Oromoo (Oromia)", languageCode: "OM", chooseLanguage: "Afaan filadhu",
+    languageHint: "Filannoon meeshaa kana irratti kuufama.", close: "Cufi",
+    brandSubtitle: "Ragaa buna",
+    auth: {
+      title: "Seeni", email: "Imeelii", password: "Jecha darbii",
+      organizationSlug: "Koodii dhaabbataa (dirqama miti)", signIn: "Seeni",
+      signOut: "Ba'i", selectOrganization: "Dhaabbata filadhu",
+      register: "Galmee gaafadhu", phone: "Lakkoofsa bilbilaa", country: "Biyya",
+      searchCountry: "Biyya yookaan koodii bilbilaa barbaadi",
+      invalidRegistration: "Maqaa, imeelii sirrii fi lakkoofsa bilbilaa biyya filatameef sirrii ta'e galchi.",
+      pendingApproval: "Galatoomi. Gaaffiin ulaagaalee yoo guute ni ilaalama. Erga hayyamamee booda tarkaanfii itti aanu imeeliidhaan argatta.",
+      requestFailed: "Gaaffii erguun hin danda'amne. Walqunnamtii kee ilaaliitii irra deebi'i.",
+      backToLogin: "Gara seensaatti deebi'i", activate: "Jecha darbii kaa'iitii seeni",
+      activationIntro: "Jecha darbii jalqabaa kaa'i. Sana booda ni seenta.",
+      confirmPassword: "Jecha darbii mirkaneessi",
+      passwordHint: "Yoo xiqqaate qubee 12. Seerri jecha darbii sarvaraas ni hojjeta.",
+      passwordMismatch: "Yoo xiqqaate qubee 12 galchiitii jecha darbii wal fakkaatuun mirkaneessi.",
+      invalidActivation: "Geessituun kun sirrii miti yookaan yeroon isaa darbeera. Bulchaa kee geessituu haaraa gaafadhu.",
+      activationFailed: "Hojiirra oolchuun hin xumuramne. Walqunnamtii fi seera jecha darbii ilaaliitii irra deebi'i. Yeroon geessituu yoo darbe bulchaa qunnami.",
+      activationLoginFailed: "Jechi darbii kuufameera, garuu seenuun hin milkoofne. Imeelii fi jecha darbii haaraadhaan seeni.",
+      clearingSession: "Seensa duraanii nageenyaan haqaa jira ...",
+      sessionClearFailed: "Seensa duraanii nageenyaan haquun hin danda'amne. Kuusaa appii keessaa haqiitii geessituu irra deebi'ii bani.",
+    },
+    tabs: { home: "Jalqaba", suppliers: "Michoota", plots: "Lafa", operations: "Hojiiwwan", help: "Gargaarsa" },
+    common: {
+      save: "Kuusi", create: "Uumi", refresh: "Haaromsi", retry: "Irra deebi'i",
+      download: "Buufadhu", share: "Qoodi", status: "Haala", name: "Maqaa", region: "Naannoo",
+      subjectId: "ID wabii", pending: "Eegaa jira", synced: "Walsimeera", failed: "Hin milkoofne",
+      conflict: "Walitti bu'iinsa",
+    },
+    sync: {
+      online: "Toora irra", offline: "Toora ala", syncing: "Walsimsiisaa jira ...", queued: "tarree eegumsaa keessa",
+      lastSync: "Walsimsiisa dhumaa", never: "Gonkumaa", syncNow: "Amma walsimsiisi",
+      configured: "Sarvarri qophaa'eera", notConfigured: "Sarvarri hin qophoofne",
+      notConfiguredDetail: "EXPO_PUBLIC_API_URL hin jiru. Walsimsiisuu fi hojiiwwan dhiyeessaa cufamaniiru.",
+      success: "Walsimsiisuun xumurameera", error: "Walsimsiisuun hin milkoofne",
+      conflicts: "Walitti bu'iinsa walsimsiisaa", keepLocal: "Kan meeshaa keessaa tursiisi", useServer: "Kan sarvaraa fayyadami",
+    },
+    home: {
+      title: "Haala hojii dirree", intro: "Toora ala galmeessi, nageenyaan walsimsiisi, hojiiwwan ulaagaalee hordofi.",
+      suppliers: "Dhiyeessitoota", plots: "Lafa buna", documents: "Sanadoota",
+    },
+    suppliers: {
+      title: "Dhiyeessitoota", description: "Dhiyeessitoonni toora ala galmaa'anii tarree ergaatiin walsimu.",
+      add: "Dhiyeessaa dabali", empty: "Dhiyeessaan hin jiru.", producerCount: "Oomishtoota", plotCount: "Lafa",
+      update: "Dhiyeessaa haaromsi", newSupplier: "Dhiyeessaa haaraa", selected: "Filatame",
+      remoteTitle: "Dhiyeessitoota kuusaa deetaa keessaa", remoteEmpty: "Kuusaa deetaa keessa dhiyeessaan dabalataa hin jiru.",
+      loadRemote: "Kuusaa deetaa irraa fe'i",
+      shipmentsTitle: "Ergaawwan", shipmentsDescription: "Ergaawwan jiran ilaaliitii lafa waliin walqabsiisuuf tokko filadhu.",
+      shipmentsEmpty: "Ergaan hin jiru.", editShipment: "Ergaa gulaali", newShipment: "Ergaa haaraa",
+      shipmentReference: "Wabii", shipmentProduct: "Oomisha", shipmentHsCode: "Koodii HS",
+      shipmentQuantity: "Baay'ina (kg)", shipmentOriginCountry: "Biyya madda", shipmentOriginRegion: "Naannoo madda",
+      shipmentSupplier: "Dhiyeessaa", noSupplier: "Dhiyeessaa malee", shipmentDestination: "Bakka ga'umsaa",
+      shipmentStatus: "Haala ergaa", status_planned: "Karoorfame", status_in_transit: "Karaa irra",
+      status_arrived: "Ga'eera", status_cancelled: "Haqame", shipmentExpectedArrival: "Guyyaa ga'umsaa eegamu (YYYY-MM-DD)",
+      shipmentNotes: "Yaadannoowwan", createShipment: "Ergaa uumi", updateShipment: "Ergaa kuusi",
+      clearShipment: "Filannoo ergaa haqi",
+    },
+    plots: {
+      title: "Lafa GeoJSON", description: "Daangaa lafaa miilaan deemaa GPS fayyadamuun galmeessi yookaan poligoonii GeoJSON galchi.",
+      producer: "Oomishtuu", farm: "Maqaa lafaa yookaan qonnaa", area: "Bal'ina (ha)", supplierId: "ID dhiyeessaa (dirqama miti)",
+      selectedShipment: "Ergaa filatame", shipment: "Odeeffannoo ergaa", noShipment: "Ergaa malee",
+      producerRequired: "Maqaa oomishtuu galchi.", farmRequired: "Maqaa lafaa yookaan qonnaa galchi.",
+      areaRequired: "Bal'ina hektaaraan galchi.", areaInvalid: "Bal'inni lakkoofsa 0 caalu ta'uu qaba.",
+      polygonRequired: "Poligoonii GeoJSON fayyadami yookaan yoo xiqqaate tuqaalee GPS sadii galmeessi.",
+      invalidPolygonDetail: "GeoJSON poligoonii qabaachuu qaba. Qindoomina [longitude, latitude] fayyadami; tuqaalee adda addaa sadii qabaadhu, tuqaa jalqabaa dhuma irratti irra deebi'i.",
+      polygonHint: "Qindoominni GeoJSON [longitude, latitude] fayyadama. Tuqaaleen GPS yeroo kuufaman poligooniitti cufamu.",
+      capturePoint: "Tuqaa GPS dabali", pointCount: "Tuqaalee", polygonJson: "Poligoonii GeoJSON",
+      importGeoJson: "GeoJSON galchi", applyGeoJson: "GeoJSON fayyadami", saveDraft: "Lafa toora ala kuusi",
+      empty: "Wixineen lafaa hin jiru.", invalidPolygon: "Poligooniin sirrii miti. Bakkeewwan adda addaa yoo xiqqaate sadii barbaachisu.",
+      gpsError: "Bakki ammaa hin argamne.", permissionError: "Hayyamni bakka argachuu hin kennamne.",
+      geofence: "Daangaa naannoo", geofencePending: "Eegaa jira", geofenceInside: "Keessa",
+      geofenceOutside: "Ala", geofenceReview: "Sakatta'iinsa barbaada",
+      geofenceApproved: "Hayyamame", geofenceBlocked: "Meeshaa irratti cufame; murtiin dhumaa kan sarvaraati.",
+      maxPoints: "Galmeen GPS tuqaalee 10,000 irratti daangeffameera.", reset: "Haqi", cancel: "Dhiisi",
+      duplicatePoint: "Tuqaan GPS kun tuqaa duraan galmaa'etti baay'ee dhihaata. Meetira muraasa deemii irra deebi'i.",
+      checkLocation: "Bakka ilaali", locationInside: "Bakki kun daangaa naannoo keessa jira",
+      locationOutside: "Bakki kun daangaawwan naannoo hundaa ala jira. Lafti asitti galmaa'u sakatta'iinsaaf ni ergama.",
+      locationDistance: "gara daangaa naannoo dhihootti",
+      locationPending: "Dhaabbata kanaaf daangaan naannoo hin fe'amne; bakki ilaalamuu hin danda'u.",
+      locationAccuracy: "Sirrummaa", startWalk: "Deemsa daangaa jalqabi",
+      stopWalk: "Deemsa xumuriitii poligoonii uumi", undoPoint: "Tuqaa GPS dhumaa haqi",
+      trackCount: "Tuqaalee GPS galmaa'an", selectDocument: "Sanada lafaa akka ragaatti walqabsiisi",
+      noDocument: "Sanadni hin walqabanne", linkedDocument: "Walqabate",
+      mapUnavailable: "Meeshaa kana irratti kaartaan hin argamu.",
+      tooFewTrackPoints: "Daangaaf tuqaalee GPS adda addaa yoo xiqqaate sadii barbaachisu.",
+    },
+    operations: {
+      title: "Hojiiwwan ulaagaalee", documents: "Sanadoota", pickUpload: "Sanada filadhuutii ol fe'i",
+      uploadsList: "Tarree ol fe'umsaa", requestsList: "Tarree hojiiwwanii", downloadedList: "Kan buufaman",
+      satellite: "Xiinxala saatalaayitii", requestSatellite: "Xiinxala gaafadhu", evidence: "Tuuta ragaa",
+      requestEvidence: "Tuuta ragaa gaafadhu", dds: "Wixinee DDS", createDds: "Wixinee DDS uumi",
+      validateDds: "Mirkaneessi", submitDds: "Dhiyeessi", checkStatus: "Haala ilaali",
+      showLocal: "Agarsiisi", removeItem: "Haqi", queuedDownload: "Yeroo toora irra deebitu ofumaan buufama.",
+      downloading: "Buufamaa jira ...", downloaded: "Meeshaa irratti kuufame",
+      noItems: "Hojiiwwan hin jiran.", providerBlocked: "Qindaa'inni dhiyeessaa hin jiru. Hojiin kun cufameera.",
+      scanPhoto: "Sanada suuraa kaasiitii ol fe'i", chooseImage: "Suuraa filadhuutii ol fe'i",
+      ocrText: "Barruu meeshaa irratti adda baafame (gulaalamuu danda'a; harkaan ilaali)",
+      ocrReview: "Barruun OCR harkaan ilaalameera",
+      ocrUnavailable: "Meeshaa kana irratti barruu adda baasuun hin danda'amu.",
+      ocrFailed: "Barruu adda baasuun hin milkoofne",
+      ocrEmpty: "Barruun hin argamne. Qulqullinaa fi kallattii suuraa ilaali.",
+    },
+    help: {
+      title: "Toora ala fi iccitii",
+      body: "GPS fi deetaa dhuunfaa hayyama qofaan galmeessi. Jijjiiramni meeshaa keessaa hanga walsimsiisuun mirkanaa'utti ni tura. Walitti bu'iinsi ofumaan hin irra barreeffamu.",
+    },
+    alerts: { required: "Dirreewwan barbaachisan hunda guuti.", saved: "Toora ala kuufame.", storageError: "Deetaan meeshaa irratti nageenyaan kuufamuu hin dandeenye." },
   },
 } satisfies Record<Language, Translation>;
 

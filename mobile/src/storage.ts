@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import type { AuthSession, PersistedState } from "./domain";
+import { createUuid } from "./domain";
 import {
   createScopedStateRepository,
   emptyState,
@@ -10,6 +11,7 @@ import {
 
 const SESSION_KEY = "tracebackend.authSession.v1";
 export const LANGUAGE_STORAGE_KEY = "tracebackend.language.v1";
+const DEVICE_KEY = "tracebackend.deviceId.v1";
 const stateRepository = createScopedStateRepository(AsyncStorage);
 
 export { emptyState, getStateStorageKey, type StateScope };
@@ -41,4 +43,12 @@ export function saveSession(session: AuthSession): Promise<void> {
 
 export function clearSession(): Promise<void> {
   return SecureStore.deleteItemAsync(SESSION_KEY);
+}
+
+export async function loadDeviceId(): Promise<string> {
+  const stored = await AsyncStorage.getItem(DEVICE_KEY);
+  if (stored) return stored;
+  const id = createUuid();
+  await AsyncStorage.setItem(DEVICE_KEY, id);
+  return id;
 }

@@ -8,16 +8,86 @@ import {
   visibilityFor,
 } from "./copernicus-form.js";
 
+const DEVICE_ACTIVITY_THROTTLE_MS = 60 * 1000;
+const DEVICE_SESSION_IDLE_MS = 30 * 60 * 1000;
+const DEVICE_SESSION_ABSOLUTE_MS = 24 * 60 * 60 * 1000;
+const AUTH_SESSION_KEYS = [
+  "accessToken",
+  "refreshToken",
+  "user",
+  "selectedOrganizationId",
+  "deviceSession",
+  "deviceSessionLastActivityAt",
+];
+
+function isValidDeviceSession(session) {
+  return Boolean(
+    session &&
+    typeof session.id === "string" && session.id.length > 0 &&
+    Number.isFinite(Date.parse(session.createdAt)) &&
+    Number.isFinite(Date.parse(session.expiresAt)) &&
+    Number.isFinite(Date.parse(session.idleExpiresAt)),
+  );
+}
+
+function deviceSessionExpired(session, lastActivityAt, now = Date.now()) {
+  if (!isValidDeviceSession(session)) return true;
+  const idleDeadline = Math.min(
+    Date.parse(session.idleExpiresAt),
+    lastActivityAt ? lastActivityAt + DEVICE_SESSION_IDLE_MS : Infinity,
+  );
+  const absoluteDeadline = Math.min(
+    Date.parse(session.expiresAt),
+    Date.parse(session.createdAt) + DEVICE_SESSION_ABSOLUTE_MS,
+  );
+  return now >= Math.min(absoluteDeadline, idleDeadline);
+}
+
+function getOrCreateDeviceId(storage, cryptoApi = globalThis.crypto) {
+  const key = "sctracker.deviceId";
+  const stored = storage.getItem(key);
+  if (stored) return stored;
+  let id;
+  if (cryptoApi?.randomUUID) {
+    id = cryptoApi.randomUUID();
+  } else {
+    const bytes = new Uint8Array(16);
+    if (cryptoApi?.getRandomValues) cryptoApi.getRandomValues(bytes);
+    else bytes.forEach((_, index) => { bytes[index] = Math.random() * 256; });
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  storage.setItem(key, id);
+  return id;
+}
+
+function clearDeviceAuth(storage) {
+  for (const key of AUTH_SESSION_KEYS) storage.removeItem(key);
+}
+
 const state = {
   accessToken: sessionStorage.getItem("accessToken"),
   refreshToken: sessionStorage.getItem("refreshToken"),
+  session: readStoredDeviceSession(),
   user: null,
   organizations: [],
   organizationId: null,
+  lastActivityAt: Number(sessionStorage.getItem("deviceSessionLastActivityAt")) || Date.now(),
+  auditPage: 1,
 };
 
 const $ = (selector) => document.querySelector(selector);
 const AUTH_REFRESH_PATH = "api/v1/auth/refresh";
+const deviceId = getOrCreateDeviceId(localStorage);
+const deviceHeaders = () => ({
+  "X-Device-Id": deviceId,
+  "X-Device-Platform": "web",
+  ...(document.querySelector('meta[name="application-version"]')?.content
+    ? { "X-App-Version": document.querySelector('meta[name="application-version"]').content }
+    : {}),
+});
 const apiBaseUrl = resolveApiBaseUrl();
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -47,6 +117,10 @@ function resolveApiBaseUrl() {
   return configuredBaseUrl ?? window.location.origin;
 }
 
+function readStoredDeviceSession() {
+  try { return JSON.parse(sessionStorage.getItem("deviceSession") ?? "null"); } catch { return null; }
+}
+
 function message(text, error = false) {
   const element = $("#message");
   element.textContent = text;
@@ -63,11 +137,16 @@ async function api(path, options = {}, retry = true) {
       Accept: "application/json",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
+      ...deviceHeaders(),
       ...options.headers,
     },
   });
   const body = await response.json().catch(() => null);
   if (response.status === 401 && retry && state.refreshToken && normalizedPath !== AUTH_REFRESH_PATH) {
+    if (body?.error?.code === "SESSION_EXPIRED") {
+      logout();
+      throw new Error("Die Sitzung ist abgelaufen. Bitte erneut anmelden.");
+    }
     const refreshed = await api("/api/v1/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken: state.refreshToken }),
@@ -76,6 +155,10 @@ async function api(path, options = {}, retry = true) {
       saveTokens(refreshed);
       return api(path, options, false);
     }
+  }
+  if (response.status === 401 && body?.error?.code === "SESSION_EXPIRED") {
+    logout();
+    throw new Error("Die Sitzung ist abgelaufen. Bitte erneut anmelden.");
   }
   if (!response.ok || !body?.data) {
     if (response.status === 404 && normalizedPath.startsWith("api/")) {
@@ -87,20 +170,155 @@ async function api(path, options = {}, retry = true) {
 }
 
 function saveTokens(tokens) {
+  if (!isValidDeviceSession(tokens?.session)) {
+    logout();
+    throw new Error("Diese Anmeldung erfordert eine neue Sitzung. Bitte erneut anmelden.");
+  }
   state.accessToken = tokens.accessToken;
   state.refreshToken = tokens.refreshToken;
+  state.session = tokens.session;
+  if (!sessionStorage.getItem("deviceSessionLastActivityAt")) {
+    state.lastActivityAt = Date.now();
+    sessionStorage.setItem("deviceSessionLastActivityAt", String(state.lastActivityAt));
+  } else {
+    state.lastActivityAt = Number(sessionStorage.getItem("deviceSessionLastActivityAt")) || Date.now();
+  }
   sessionStorage.setItem("accessToken", tokens.accessToken);
   sessionStorage.setItem("refreshToken", tokens.refreshToken);
+  sessionStorage.setItem("deviceSession", JSON.stringify(tokens.session));
+  scheduleSessionExpiry();
 }
 
 function logout() {
+  clearTimeout(sessionExpiryTimer);
   state.accessToken = null;
   state.refreshToken = null;
+  state.session = null;
   state.user = null;
-  sessionStorage.clear();
+  clearDeviceAuth(sessionStorage);
   $("#workspace").classList.add("hidden");
   $("#logout").classList.add("hidden");
   $("#login-panel").classList.remove("hidden");
+}
+
+let sessionExpiryTimer = null;
+let lastActivityRequestAt = 0;
+let lastProactiveRefreshAt = 0;
+let activitySync = null;
+
+function sessionDeadline() {
+  if (!isValidDeviceSession(state.session)) return 0;
+  return Math.min(
+    Date.parse(state.session.expiresAt),
+    Date.parse(state.session.createdAt) + DEVICE_SESSION_ABSOLUTE_MS,
+    Date.parse(state.session.idleExpiresAt),
+    state.lastActivityAt + DEVICE_SESSION_IDLE_MS,
+  );
+}
+
+function expireSession() {
+  if (!state.accessToken) return;
+  logout();
+  message("Die Sitzung ist abgelaufen. Bitte erneut anmelden.", true);
+}
+
+function scheduleSessionExpiry() {
+  clearTimeout(sessionExpiryTimer);
+  if (!state.accessToken) return;
+  const deadline = sessionDeadline();
+  if (!deadline) {
+    expireSession();
+    return;
+  }
+  sessionExpiryTimer = setTimeout(() => {
+    if (deviceSessionExpired(state.session, state.lastActivityAt)) expireSession();
+    else scheduleSessionExpiry();
+  }, Math.max(0, deadline - Date.now()));
+}
+
+function tokenExpiresSoon() {
+  try {
+    const token = state.accessToken?.split(".")[1];
+    if (!token) return false;
+    const claims = JSON.parse(atob(token.replace(/-/g, "+").replace(/_/g, "/")));
+    return Number(claims.exp) * 1000 <= Date.now() + 5 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+async function syncDeviceActivity() {
+  if (activitySync) return activitySync;
+  activitySync = (async () => {
+    const now = Date.now();
+    if (deviceSessionExpired(state.session, state.lastActivityAt, now)) {
+      expireSession();
+      return;
+    }
+    if (tokenExpiresSoon() && now - lastProactiveRefreshAt >= DEVICE_ACTIVITY_THROTTLE_MS) {
+      lastProactiveRefreshAt = now;
+      const refreshed = await api("/api/v1/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: state.refreshToken }),
+      }, false).catch(() => null);
+      if (!refreshed) {
+        expireSession();
+        return;
+      }
+      saveTokens(refreshed);
+    }
+    if (now - lastActivityRequestAt < DEVICE_ACTIVITY_THROTTLE_MS) return;
+    lastActivityRequestAt = now;
+    try {
+      const response = await fetch(buildApiUrl("/api/v1/auth/activity"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${state.accessToken}`,
+          ...deviceHeaders(),
+          ...(state.organizationId ? { "X-Organization-Id": state.organizationId } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.status === 401) {
+        if (payload?.error?.code === "SESSION_EXPIRED") {
+          expireSession();
+        } else {
+          const refreshed = await api("/api/v1/auth/refresh", {
+            method: "POST",
+            body: JSON.stringify({ refreshToken: state.refreshToken }),
+          }, false).catch(() => null);
+          if (refreshed) saveTokens(refreshed);
+          else expireSession();
+        }
+        return;
+      }
+      if (!response.ok || !isValidDeviceSession(payload?.data?.session)) return;
+      state.session = payload.data.session;
+      sessionStorage.setItem("deviceSession", JSON.stringify(state.session));
+      scheduleSessionExpiry();
+    } catch {
+      // Local expiry still applies if the browser is offline.
+    }
+  })().finally(() => { activitySync = null; });
+  return activitySync;
+}
+
+function recordDeviceActivity() {
+  if (!state.accessToken || document.visibilityState !== "visible") return;
+  const now = Date.now();
+  if (deviceSessionExpired(state.session, state.lastActivityAt, now)) {
+    expireSession();
+    return;
+  }
+  state.lastActivityAt = now;
+  sessionStorage.setItem("deviceSessionLastActivityAt", String(now));
+  scheduleSessionExpiry();
+  void syncDeviceActivity();
+}
+
+function checkDeviceSession() {
+  if (state.accessToken && deviceSessionExpired(state.session, state.lastActivityAt)) expireSession();
 }
 
 async function loadOrganizations() {
@@ -158,6 +376,131 @@ async function loadUsers() {
       .map((role) => `<option ${role === user.role ? "selected" : ""}>${role}</option>`).join("")}</select></td>` +
     `<td>${user.active ? "Ja" : "Nein"}</td><td><button data-user-toggle="${user.id}" data-active="${user.active}">` +
     `${user.active ? "Deaktivieren" : "Aktivieren"}</button></td></tr>`));
+  await loadDeviceAudit().catch((error) => { $("#device-audit-status").textContent = error.message; });
+}
+
+function deviceAuditQuery(format = "json") {
+  const form = $("#device-audit-filters");
+  const values = new FormData(form);
+  const params = new URLSearchParams();
+  for (const name of ["userId", "deviceId", "sessionId", "action", "platform", "outcome", "search"]) {
+    const value = String(values.get(name) ?? "").trim();
+    if (value) params.set(name, value);
+  }
+  for (const name of ["from", "to"]) {
+    const value = String(values.get(name) ?? "");
+    if (value) params.set(name, new Date(value).toISOString());
+  }
+  if (state.user?.role === "system_admin" && state.organizationId) {
+    params.set("organizationId", state.organizationId);
+  }
+  params.set("page", String(state.auditPage));
+  params.set("limit", String(Number(values.get("limit")) || 50));
+  if (format !== "json") params.set("format", format);
+  return params;
+}
+
+function auditTime(value) {
+  return value ? new Date(value).toLocaleString() : "—";
+}
+
+function renderAuditSummary(summary = {}) {
+  const cards = [
+    ["Ereignisse", summary.events],
+    ["Fehler", summary.errors],
+    ["Fehlerquote", `${Number(summary.errorRate ?? 0).toFixed(1)}%`],
+    ["Geräte", summary.devices],
+    ["Sitzungen", summary.sessions],
+    ["Aktive Sitzungen", summary.activeSessions],
+  ];
+  $("#device-audit-summary").innerHTML = cards.map(([label, value]) =>
+    `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? 0)}</strong></article>`).join("");
+}
+
+async function loadDeviceAudit() {
+  if (!state.organizationId) return;
+  const params = deviceAuditQuery();
+  const result = await api(`/api/v1/admin/users/device-audit?${params}`);
+  const events = result.events ?? [];
+  const sessions = result.sessions ?? [];
+  renderAuditSummary(result.summary);
+  $("#device-audit-sessions").innerHTML = table(
+    ["Status", "Benutzer", "Plattform / App", "Gerät", "Sitzung", "Zuletzt aktiv", "Ablauf", "Ende"],
+    sessions.map((session) =>
+      `<tr><td>${escapeHtml(session.status)}${session.endReason ? `<br><small>${escapeHtml(session.endReason)}</small>` : ""}</td>` +
+      `<td>${escapeHtml(session.userName)}<br><small>${escapeHtml(session.email)}</small></td>` +
+      `<td>${escapeHtml(session.platform)}<br><small>${escapeHtml(session.appVersion ?? "—")}</small></td>` +
+      `<td><code>${escapeHtml(session.deviceId)}</code></td><td><code>${escapeHtml(session.id)}</code></td>` +
+      `<td>${escapeHtml(auditTime(session.lastActiveAt))}</td><td>${escapeHtml(auditTime(session.expiresAt))}</td>` +
+      `<td>${escapeHtml(auditTime(session.endedAt))}</td></tr>`),
+  );
+  $("#device-audit-timeline").innerHTML = table(
+    ["Tag", "Ereignisse", "Fehler"],
+    (result.timeline ?? []).map((day) =>
+      `<tr><td>${escapeHtml(day.day)}</td><td>${escapeHtml(day.events)}</td><td>${escapeHtml(day.errors)}</td></tr>`),
+  );
+  $("#device-audit-events").innerHTML = table(
+    ["Zeit", "Benutzer", "Aktion", "Gerät / Sitzung", "Plattform", "Anfrage", "Ergebnis"],
+    events.map((event) =>
+      `<tr><td>${escapeHtml(auditTime(event.createdAt))}</td>` +
+      `<td>${escapeHtml(event.userName)}<br><small>${escapeHtml(event.email)}</small></td>` +
+      `<td>${escapeHtml(event.action)}</td>` +
+      `<td><small>Gerät: ${escapeHtml(event.deviceId)}<br>Sitzung: ${escapeHtml(event.sessionId)}</small></td>` +
+      `<td>${escapeHtml(event.platform)}<br><small>${escapeHtml(event.appVersion ?? "—")}</small></td>` +
+      `<td>${escapeHtml(event.method)} ${escapeHtml(event.path)}</td>` +
+      `<td>${escapeHtml(event.statusCode ?? "—")}</td></tr>`),
+  );
+  const page = Number(result.page ?? state.auditPage);
+  const limit = Number(result.limit ?? 50);
+  const total = Number(result.total ?? 0);
+  $("#device-audit-page").textContent = `Seite ${page} · ${total} Ereignisse`;
+  $("#device-audit-previous").disabled = page <= 1;
+  $("#device-audit-next").disabled = page * limit >= total;
+  $("#device-audit-status").textContent = "";
+}
+
+async function downloadDeviceAuditCsv() {
+  const params = deviceAuditQuery("csv");
+  const path = `/api/v1/admin/users/device-audit?${params}`;
+  let response = await fetch(buildApiUrl(path), {
+    headers: {
+      Accept: "text/csv",
+      ...(state.accessToken ? { Authorization: `Bearer ${state.accessToken}` } : {}),
+      ...deviceHeaders(),
+    },
+  });
+  if (response.status === 401) {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.error?.code === "SESSION_EXPIRED") {
+      logout();
+    } else {
+      const refreshed = await api("/api/v1/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: state.refreshToken }),
+      }, false).catch(() => null);
+      if (refreshed) {
+        saveTokens(refreshed);
+        response = await fetch(buildApiUrl(path), {
+          headers: {
+            Accept: "text/csv",
+            Authorization: `Bearer ${state.accessToken}`,
+            ...deviceHeaders(),
+          },
+        });
+      }
+    }
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    if (body?.error?.code === "SESSION_EXPIRED") logout();
+    throw new Error(body?.error?.message ?? `HTTP ${response.status}`);
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = "device-audit.csv";
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 async function loadConfig() {
@@ -317,6 +660,15 @@ async function loadActiveTab() {
 
 async function initialize() {
   if (!state.accessToken) return;
+  if (!isValidDeviceSession(state.session)) {
+    logout();
+    return;
+  }
+  if (deviceSessionExpired(state.session, state.lastActivityAt)) {
+    expireSession();
+    return;
+  }
+  scheduleSessionExpiry();
   try {
     state.user = await api("/api/v1/auth/me");
     $("#login-panel").classList.add("hidden");
@@ -360,8 +712,37 @@ $("#logout").addEventListener("click", async () => {
   logout();
 });
 
+$("#device-audit-filters").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  state.auditPage = 1;
+  try { await loadDeviceAudit(); } catch (error) {
+    $("#device-audit-status").textContent = error.message;
+  }
+});
+
+$("#device-audit-csv").addEventListener("click", async () => {
+  try { await downloadDeviceAuditCsv(); } catch (error) {
+    $("#device-audit-status").textContent = error.message;
+  }
+});
+
+$("#device-audit-previous").addEventListener("click", async () => {
+  state.auditPage = Math.max(1, state.auditPage - 1);
+  try { await loadDeviceAudit(); } catch (error) {
+    $("#device-audit-status").textContent = error.message;
+  }
+});
+
+$("#device-audit-next").addEventListener("click", async () => {
+  state.auditPage += 1;
+  try { await loadDeviceAudit(); } catch (error) {
+    $("#device-audit-status").textContent = error.message;
+  }
+});
+
 $("#organization-select").addEventListener("change", async (event) => {
   state.organizationId = event.target.value;
+  state.auditPage = 1;
   resetGoogleMapsForm();
   showSelectedOrganization();
   await loadActiveTab();
@@ -601,5 +982,14 @@ document.querySelectorAll(".tabs button").forEach((button) => {
     await loadActiveTab();
   });
 });
+
+document.addEventListener("pointerdown", recordDeviceActivity, { passive: true });
+document.addEventListener("keydown", recordDeviceActivity);
+document.addEventListener("touchstart", recordDeviceActivity, { passive: true });
+document.addEventListener("wheel", recordDeviceActivity, { passive: true });
+document.addEventListener("input", recordDeviceActivity);
+document.addEventListener("change", recordDeviceActivity);
+document.addEventListener("visibilitychange", checkDeviceSession);
+window.addEventListener("focus", checkDeviceSession);
 
 void initialize();

@@ -4,6 +4,7 @@ import type {AppConfig} from "../config.js";
 import {parse,sendData,authOf} from "../http.js";
 import {createAuthService,loginSchema,refreshSchema} from "../services/auth-service.js";
 import {createPasswordResetService,forgotPasswordSchema,resetPasswordSchema} from "../services/password-reset-service.js";
+import { sessionActivity } from "../services/device-session-service.js";
 export async function registerAuthRoutes(app:FastifyInstance,pool:Pool,config:AppConfig,authenticate:(request:FastifyRequest)=>Promise<void>) {
  const service=createAuthService(pool,config);
  const passwordResetService=createPasswordResetService(pool,config,app.log);
@@ -11,6 +12,7 @@ export async function registerAuthRoutes(app:FastifyInstance,pool:Pool,config:Ap
  app.post("/api/v1/auth/refresh",{config:{rateLimit:{max:20,timeWindow:"1 minute"}}},async(request,reply)=>sendData(reply,await service.refresh(parse(refreshSchema,request.body).refreshToken)));
  app.post("/api/v1/auth/logout",{preHandler:authenticate},async(request,reply)=>sendData(reply,await service.logout(authOf(request),request,parse(refreshSchema,request.body).refreshToken)));
  app.get("/api/v1/auth/me",{preHandler:authenticate},async(request,reply)=>sendData(reply,await service.me(authOf(request))));
+ app.post("/api/v1/auth/activity",{preHandler:authenticate},async(request,reply)=>sendData(reply,await sessionActivity(pool,authOf(request))));
  app.post("/api/v1/auth/forgot-password",{config:{rateLimit:{max:5,timeWindow:"1 minute"}}},async(request,reply)=>{
   const body=parse(forgotPasswordSchema,request.body);
   return sendData(reply,await passwordResetService.requestReset(body.email,body.organizationSlug),202);

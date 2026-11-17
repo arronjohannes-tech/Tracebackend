@@ -16,6 +16,10 @@ import {
 } from "../security.js";
 import type { AuthContext, Role } from "../types.js";
 import type { Permissions } from "../permissions.js";
+import {
+  createDeviceSession, endDeviceSession, recordDeviceEvent, sessionExpired, sessionInfo,
+  type DeviceSessionRow,
+} from "./device-session-service.js";
 
 type UserRow = {
   id: string;
@@ -88,33 +92,29 @@ async function issueTokens(
   pool: Pool,
   config: AppConfig,
   user: UserRow,
-  familyId?: string,
-  rotatedFromId?: string,
+  request: AuditContext,
 ) {
+  const session = await withContext(pool, "system", async (client) => {
+    const device = await createDeviceSession(client, user.id, user.organization_id, request);
+    const refresh = createRefreshToken();
+    await repository.insertRefreshTokens(client, [
+      refresh.id, device.id, user.id, user.organization_id, refresh.hash, null, device.expires_at,
+    ]);
+    return { device, refresh };
+  });
   const auth: AuthContext = {
     userId: user.id,
     organizationId: user.organization_id,
     role: user.role,
     tokenVersion: user.token_version,
+    sessionId: session.device.id,
   };
-  const refresh = createRefreshToken();
-  const expiresAt = new Date(Date.now() + config.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
-  await withContext(pool, "system", async (client) => {
-    await repository.insertRefreshTokens(client,[
-        refresh.id,
-        familyId ?? refresh.id,
-        user.id,
-        user.organization_id,
-        refresh.hash,
-        rotatedFromId ?? null,
-        expiresAt,
-      ]);
-  });
   return {
     accessToken: await signAccessToken(config, auth),
     expiresIn: config.ACCESS_TOKEN_TTL_SECONDS,
-    refreshToken: refresh.serialized,
-    refreshExpiresAt: expiresAt.toISOString(),
+    refreshToken: session.refresh.serialized,
+    refreshExpiresAt: session.device.expires_at.toISOString(),
+    session: sessionInfo(session.device),
     user: publicUser(user),
     ...organizationSelection(user),
   };
@@ -130,7 +130,7 @@ export function createAuthService(pool: Pool, config: AppConfig) {
       throw new AppError(401, "INVALID_CREDENTIALS", "Invalid email, password, or organization.");
     }
     const user = users[0]!;
-    const tokens = await issueTokens(pool, config, user);
+    const tokens = await issueTokens(pool, config, user, request);
     const auth: AuthContext = {
       userId: user.id,
       organizationId: user.organization_id,
@@ -147,7 +147,6 @@ export function createAuthService(pool: Pool, config: AppConfig) {
       throw new AppError(401, "INVALID_REFRESH_TOKEN", "The refresh token is invalid.");
     }
     const nextRefresh = createRefreshToken();
-    const nextExpiresAt = new Date(Date.now() + config.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
     const result = await withContext(pool, "system", async (client) => {
       const token = await repository.selectRefreshTokens<{
         id: string;
@@ -163,7 +162,15 @@ export function createAuthService(pool: Pool, config: AppConfig) {
       }
       if (token.used_at || token.revoked_at) {
         await repository.updateRefreshTokens(client,[token.family_id]);
+        await endDeviceSession(client, token.family_id, "revoked");
         return { error: "reuse" as const };
+      }
+      const session = await queryOne<DeviceSessionRow>(client,
+        "SELECT * FROM device_sessions WHERE id=$1 AND user_id=$2 FOR UPDATE", [token.family_id, token.user_id]);
+      if (!session || sessionExpired(session)) {
+        await endDeviceSession(client, token.family_id, "expired");
+        await repository.updateRefreshTokens(client, [token.family_id]);
+        return { error: "session" as const };
       }
       if (token.expires_at.getTime() <= Date.now()) {
         await repository.updateRefreshTokens2(client,[token.id]);
@@ -185,9 +192,10 @@ export function createAuthService(pool: Pool, config: AppConfig) {
           user.organization_id,
           nextRefresh.hash,
           token.id,
-          nextExpiresAt,
+          session.expires_at,
         ]);
-      return { token, user, error: null };
+      await recordDeviceEvent(client, session.id, "session.refresh", 200);
+      return { token, user, session, error: null };
     });
     if (result.error === "reuse") {
       throw new AppError(401, "REFRESH_TOKEN_REUSE", "Refresh token reuse was detected; the session was revoked.");
@@ -195,17 +203,22 @@ export function createAuthService(pool: Pool, config: AppConfig) {
     if (result.error === "expired") {
       throw new AppError(401, "REFRESH_TOKEN_EXPIRED", "The refresh token has expired.");
     }
+    if (result.error === "session") {
+      throw new AppError(401, "SESSION_EXPIRED", "Your session has ended. Sign in again.");
+    }
     const auth: AuthContext = {
       userId: result.user.id,
       organizationId: result.user.organization_id,
       role: result.user.role,
       tokenVersion: result.user.token_version,
+      sessionId: result.session.id,
     };
     return {
       accessToken: await signAccessToken(config, auth),
       expiresIn: config.ACCESS_TOKEN_TTL_SECONDS,
       refreshToken: nextRefresh.serialized,
-      refreshExpiresAt: nextExpiresAt.toISOString(),
+      refreshExpiresAt: result.session.expires_at.toISOString(),
+      session: sessionInfo(result.session),
       user: publicUser(result.user),
       ...organizationSelection(result.user),
     };
@@ -214,6 +227,7 @@ export function createAuthService(pool: Pool, config: AppConfig) {
     const tokenHash = hashOpaqueToken(refreshToken);
     await withContext(pool, "system", async (client) => {
       await repository.updateRefreshTokens4(client,[tokenHash, auth.userId]);
+      if (auth.sessionId) await endDeviceSession(client, auth.sessionId, "logout");
       await writeAudit(client, request, auth, "auth.logout", "user", auth.userId);
     });
     return { loggedOut: true };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activateAccount, registerAccount, configureApiSession, getCurrentAuthHeaders, login, refreshSession, ApiError } from "./api";
+import { activateAccount, registerAccount, configureApiSession, getCurrentAuthHeaders, login, refreshSession, ApiError, recordSessionActivity, expireSession } from "./api";
 
 test("registration and activation use public endpoints without stale auth and activate before login", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -137,4 +137,65 @@ test("transient refresh failures preserve the session and revoked tokens clear i
  globalThis.fetch=async()=>Response.json({error:{code:"INVALID_REFRESH_TOKEN",message:"Revoked"}},{status:401});
  await assert.rejects(refreshSession);
  assert.deepEqual(events,[null]);
+});
+
+test("activity renews only the idle deadline, is throttled, and cannot restore a signed-out session", async (t) => {
+  const oldFetch = globalThis.fetch, oldUrl = process.env.EXPO_PUBLIC_API_URL;
+  process.env.EXPO_PUBLIC_API_URL = "https://mobile.test";
+  const now = Date.now();
+  const device = {
+    id: "session-1", createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 86_400_000).toISOString(), idleExpiresAt: new Date(now + 1_800_000).toISOString(),
+  };
+  const session = {
+    accessToken: "access", refreshToken: "refresh", accessTokenExpiresAt: new Date(now + 300_000).toISOString(),
+    user: { id: "u", email: "u@example.com" }, organizations: [{ id: "o", name: "O" }], selectedOrganizationId: "o",
+    session: device,
+  };
+  const changes: unknown[] = [];
+  configureApiSession(session, (next) => { changes.push(next); });
+  let calls = 0;
+  let finish!: (response: Response) => void;
+  globalThis.fetch = async (input, init) => {
+    calls++;
+    assert.ok(String(input).endsWith("/auth/activity"));
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer access");
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  t.after(() => {
+    globalThis.fetch = oldFetch;
+    configureApiSession(null, () => undefined);
+    if (oldUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL; else process.env.EXPO_PUBLIC_API_URL = oldUrl;
+  });
+  const pending = recordSessionActivity();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await recordSessionActivity();
+  assert.equal(calls, 1);
+  finish(Response.json({ data: { session: { ...device, idleExpiresAt: new Date(now + 1_810_000).toISOString() } } }));
+  await pending;
+  await recordSessionActivity();
+  assert.equal(calls, 1);
+  assert.equal(changes.length, 1);
+  configureApiSession(session, (next) => { changes.push(next); });
+  const stale = recordSessionActivity();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await expireSession();
+  finish(Response.json({ data: { session: device } }));
+  await stale;
+  assert.equal(changes.at(-1), null);
+});
+
+test("expired sessions are cleared before any protected request or refresh", async (t) => {
+  const now = Date.now();
+  const changes: unknown[] = [];
+  configureApiSession({
+    accessToken: "access", refreshToken: "refresh", accessTokenExpiresAt: new Date(now + 300_000).toISOString(),
+    user: { id: "u", email: "u@example.com" }, organizations: [{ id: "o", name: "O" }], selectedOrganizationId: "o",
+    session: { id: "s", createdAt: new Date(now - 1_800_000).toISOString(),
+      expiresAt: new Date(now + 300_000).toISOString(), idleExpiresAt: new Date(now - 1).toISOString() },
+  }, (next) => { changes.push(next); });
+  t.after(() => configureApiSession(null, () => undefined));
+  await assert.rejects(getCurrentAuthHeaders(), (error: unknown) =>
+    error instanceof ApiError && error.code === "SESSION_EXPIRED");
+  assert.deepEqual(changes, [null]);
 });

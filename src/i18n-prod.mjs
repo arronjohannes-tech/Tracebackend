@@ -92,6 +92,8 @@ const rows = [
   ["prod.login.authenticating", "Anmeldung läuft…", "Signing in…", "በመግባት ላይ…"],
   ["prod.login.failed", "Anmeldung fehlgeschlagen.", "Sign-in failed.", "መግባት አልተሳካም።"],
   ["prod.login.noOrganization", "Es ist noch keine Organisation angelegt.", "No organization exists yet.", "እስካሁን ምንም ድርጅት አልተፈጠረም።"],
+  ["prod.session.expired", "Sitzung abgelaufen. Bitte erneut anmelden. Lokale Entwürfe bleiben erhalten.", "Your session expired. Please sign in again. Local drafts are preserved.", "ክፍለ ጊዜዎ አብቅቷል። እባክዎ እንደገና ይግቡ። የአካባቢ ረቂቆች ይቀመጣሉ።"],
+  ["prod.session.reauthenticate", "Diese Anmeldung erfordert eine neue Sitzung. Bitte erneut anmelden.", "This sign-in requires a new session. Please sign in again.", "ይህ መግቢያ አዲስ ክፍለ ጊዜ ይፈልጋል። እባክዎ እንደገና ይግቡ።"],
 
   ["prod.org.label", "Organisation · Produktiv", "Organization · Production", "ድርጅት · ምርት"],
   ["prod.org.loading", "Wird geladen…", "Loading…", "በመጫን ላይ…"],

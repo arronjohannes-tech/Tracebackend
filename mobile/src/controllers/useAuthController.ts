@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Linking, Platform } from "react-native";
+import { AppState, Linking, Platform } from "react-native";
 import {
   activateAccount,
   ApiError,
@@ -8,9 +8,13 @@ import {
   logout as apiLogout,
   refreshSession,
   selectOrganization as apiSelectOrganization,
+  configureDevice,
+  enforceSessionDeadline,
+  recordSessionActivity,
 } from "../api";
 import type { AuthSession } from "../domain";
-import { clearSession, loadSession, saveSession } from "../storage";
+import { clearSession, loadDeviceId, loadSession, saveSession } from "../storage";
+import appConfig from "../../app.json";
 import { parseActivationLink } from "../onboarding";
 
 type Activation = {
@@ -76,6 +80,8 @@ export function useAuthController() {
     }
     void (async () => {
       const initial = generation.current;
+      const deviceId = await loadDeviceId();
+      configureDevice(deviceId, Platform.OS, appConfig.expo.version);
       const url = await Linking.getInitialURL();
       if (!active || generation.current !== initial) return;
       acceptLink(Platform.OS === "web" ? globalThis.location.href : url);
@@ -84,6 +90,7 @@ export function useAuthController() {
       if (!active || generation.current !== initial) return;
       configureApiSession(stored, persist);
       setSession(stored);
+      await enforceSessionDeadline();
       if (stored && Date.parse(stored.accessTokenExpiresAt) <= Date.now() + 15_000) {
         await refreshSession();
       }
@@ -106,6 +113,41 @@ export function useAuthController() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    const check = () => {
+      void enforceSessionDeadline().catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : String(reason)));
+    };
+    const timer = setInterval(check, 5000);
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active") check();
+    });
+    const activity = () => {
+      if (Platform.OS === "web" && globalThis.document?.visibilityState !== "visible") return;
+      if (AppState.currentState === "active" || Platform.OS === "web") recordActivity();
+    };
+    if (Platform.OS === "web") {
+      globalThis.addEventListener("pointerdown", activity);
+      globalThis.addEventListener("keydown", activity);
+      globalThis.addEventListener("scroll", activity, true);
+    }
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+      if (Platform.OS === "web") {
+        globalThis.removeEventListener("pointerdown", activity);
+        globalThis.removeEventListener("keydown", activity);
+        globalThis.removeEventListener("scroll", activity, true);
+      }
+    };
+  }, [session?.session?.id]);
+
+  function recordActivity() {
+    void recordSessionActivity().catch((reason: unknown) =>
+      setError(reason instanceof Error ? reason.message : String(reason)));
+  }
 
   function dismissActivation() {
     if (working.current || activationRef.current?.status === "clearing" ||
@@ -193,5 +235,5 @@ export function useAuthController() {
     }
   }
 
-  return { session, ready, busy, error, login, logout, selectOrganization, activation, activate, dismissActivation };
+  return { session, ready, busy, error, login, logout, selectOrganization, activation, activate, dismissActivation, recordActivity };
 }

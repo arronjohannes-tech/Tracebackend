@@ -13,12 +13,14 @@ export type Organization = {
 export type AuthUser = {
   id: string;
   email: string;
+  displayName?: string;
   name?: string;
   role?: string;
   roles?: string[];
 };
 
 export type AuthSession = {
+  session?: import("./sessionPolicy").DeviceSession;
   accessToken: string;
   accessTokenExpiresAt: string;
   refreshToken: string;
