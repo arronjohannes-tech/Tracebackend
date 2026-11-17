@@ -36,6 +36,8 @@ export async function buildApp(config: AppConfig, pool: Pool): Promise<FastifyIn
           "body.password",
           "body.token",
           "body.refreshToken",
+          "body.apiKey",
+          "req.body.apiKey",
           "body.eu.password",
           "body.eu.username",
           "body.eu.clientId",

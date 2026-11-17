@@ -1,4 +1,4 @@
-import { prodTranslations } from "./i18n-prod.mjs?v=2";
+import { prodTranslations } from "./i18n-prod.mjs?v=4";
 
 export const SUPPORTED_LANGUAGES = ["de", "en", "am"];
 

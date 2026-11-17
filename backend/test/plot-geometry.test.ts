@@ -259,6 +259,23 @@ test("background requests honour the requested resolution and retain their geogr
   }
 });
 
+test("comparison backgrounds restrict the baseline to December 31 UTC and align both periods in Web Mercator", () => {
+  const settings = { ...defaultProcessSettings(), lookbackDays: 180 };
+  const bbox: [number, number, number, number] = [36, 60, 36.02, 60.01];
+  const now = new Date("2026-11-17T00:00:00Z");
+  const baseline = buildBackgroundRequest(settings, bbox, now, 512, "baseline");
+  const current = buildBackgroundRequest(settings, bbox, now, 512, "current");
+  assert.deepEqual(baseline.timeRange, { from: "2020-12-31T00:00:00.000Z", to: "2020-12-31T23:59:59.999Z" });
+  assert.equal(current.timeRange.to, now.toISOString());
+  assert.equal(current.request.input.data[0]!.dataFilter.mosaickingOrder, "mostRecent");
+  assert.deepEqual(baseline.request.input.bounds, current.request.input.bounds);
+  assert.match(baseline.request.input.bounds.properties.crs, /3857$/);
+  assert.equal(baseline.request.output.responses[0]!.format.type, "image/png");
+  assert.match(baseline.request.evalscript, /if \(!sample.dataMask\) return \[0.45, 0.45, 0.45, 1\]/);
+  assert.deepEqual(baseline.request.output, current.request.output);
+  assert.ok(Math.abs(current.request.output.width - current.request.output.height) <= 1);
+});
+
 test("the background route validates its query and reports an unconfigured satellite service", async () => {
   const bad = await request("field_agent", { method: "GET", url: "/api/v1/plots/satellite-background?bbox=1,2" });
   assert.equal(bad.response.statusCode, 400);
@@ -276,9 +293,13 @@ test("the background route validates its query and reports an unconfigured satel
     });
     assert.equal(invalid.response.statusCode, 400);
   }
+  const invalidDate = await request("field_agent", {
+    method: "GET", url: "/api/v1/plots/satellite-background?bbox=36.79,7.59,36.81,7.61&comparison=2020-12-30",
+  });
+  assert.equal(invalidDate.response.statusCode, 400);
 });
 
-function backgroundService(options: { fail?: boolean; cached?: BackgroundImage; beforeFetch?: () => Promise<void> } = {}) {
+function backgroundService(options: { fail?: boolean; cached?: BackgroundImage; beforeFetch?: () => Promise<void>; comparisonEnabled?: boolean } = {}) {
   const image: BackgroundImage = {
     bbox: [36.79, 7.59, 36.81, 7.61], contentType: "image/jpeg", image: "AAAA",
     from: "2026-09-01T00:00:00.000Z", to: "2026-11-01T00:00:00.000Z",
@@ -307,7 +328,12 @@ function backgroundService(options: { fail?: boolean; cached?: BackgroundImage; 
       return image;
     },
   } as unknown as CopernicusService;
-  const client = { async query() { return { rows: [], rowCount: 0 }; }, release() { } } as unknown as PoolClient;
+  const client = {
+    async query(sql: string) {
+      return { rows: sql.includes("SELECT satellite_comparison_enabled")
+        ? [{ satellite_comparison_enabled: options.comparisonEnabled ?? false }] : [], rowCount: 0 };
+    }, release() { },
+  } as unknown as PoolClient;
   const pool = { connect: async () => client } as unknown as Pool;
   const service = createSatelliteBackgroundService(pool, config, copernicus, () => store, () => new Date("2026-11-13T12:00:00Z"));
   return { service, image, stored, sizes, fetches: () => fetches };
@@ -359,4 +385,22 @@ test("provider failures become a 502 and a configured cache entry skips the prov
   });
   assert.equal((await cached.service.get(auth, organizationId, [36.79, 7.59, 36.81, 7.61])).image, "BBBB");
   assert.equal(cached.fetches(), 0);
+});
+
+test("comparison activation is checked before caching and standard, baseline and current never share images", async () => {
+  const disabled = backgroundService({ comparisonEnabled: false });
+  await assert.rejects(disabled.service.get(auth, organizationId, disabled.image.bbox, 512, "baseline"),
+    (error: { statusCode?: number }) => error.statusCode === 403);
+  assert.equal(disabled.fetches(), 0);
+  const options = { comparisonEnabled: true };
+  const enabled = backgroundService(options);
+  for (const period of [undefined, "baseline", "current", "baseline"] as const) {
+    await enabled.service.get(auth, organizationId, enabled.image.bbox, 512, period);
+  }
+  assert.equal(enabled.fetches(), 3);
+  assert.ok([...enabled.stored.keys()].some((key) => key.includes("baseline-2020-12-31-mercator")));
+  options.comparisonEnabled = false;
+  await assert.rejects(enabled.service.get(auth, organizationId, enabled.image.bbox, 512, "baseline"),
+    (error: { statusCode?: number }) => error.statusCode === 403);
+  assert.equal(enabled.fetches(), 3);
 });

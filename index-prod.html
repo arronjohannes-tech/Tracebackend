@@ -7,7 +7,7 @@
   <meta name="description" content="SCTracker - kaffeefokussierte EUDR-Traceability vom Plot bis zur DDS"
     data-i18n-content="meta.description" />
   <title>Tracehub | Produktiv</title>
-  <link rel="stylesheet" href="styles-prod.css?v=3" />
+  <link rel="stylesheet" href="styles-prod.css?v=5" />
 </head>
 
 <body data-edition="prod">
@@ -222,6 +222,31 @@
         </div>
         <div class="plot-tabs" id="plot-tabs" role="tablist" data-i18n-aria-label="prod.pv.tabs"
           aria-label="Parzellen" hidden></div>
+        <div class="plot-map-controls" id="plot-map-controls" hidden>
+          <label><span data-i18n="prod.map.source">Kartenquelle</span>
+            <select id="plot-map-provider">
+              <option value="copernicus" data-i18n="prod.map.existing">Bestehende Karte (Copernicus)</option>
+              <option value="google">Google Maps</option>
+            </select>
+          </label>
+          <label class="plot-map-switch"><input id="plot-map-satellite" type="checkbox" checked>
+            <span data-i18n="prod.map.satellite">Satellitenbild</span></label>
+          <label><span data-i18n="prod.compare.title">Wischvergleich</span>
+            <select id="plot-map-comparison" disabled>
+              <option value="off" data-i18n="prod.compare.off">Aus</option>
+              <option value="current" data-i18n="prod.compare.currentPair">31.12.2020 / Copernicus aktuell</option>
+              <option value="google" data-i18n="prod.compare.googlePair">31.12.2020 / Google Maps</option>
+            </select>
+          </label>
+          <label id="plot-comparison-position" hidden><span data-i18n="prod.compare.position">Wischposition</span>
+            <input type="range" min="0" max="100" value="50" data-i18n-aria-label="prod.compare.position">
+          </label>
+          <p id="plot-comparison-status" role="status"></p>
+          <button type="button" class="secondary-button" id="plot-comparison-retry" hidden
+            data-i18n="prod.bg.retry">Erneut laden</button>
+          <p data-i18n="prod.compare.notice">2020: ausschließlich 31.12.2020 (UTC). Google-Aufnahmezeitpunkt unbekannt. Rein visueller Vergleich.</p>
+          <p data-i18n="prod.map.privacy">Google Maps übermittelt beim Auswählen Kartendaten an Google.</p>
+        </div>
         <article class="panel" id="satellite-panel" aria-live="polite" hidden></article>
         <div class="plot-pane" id="plots-all" role="tabpanel">
           <div class="map-layout" id="plots-map-view" hidden>
@@ -609,7 +634,7 @@
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app-prod.js?v=4"></script>
+  <script type="module" src="app-prod.js?v=6"></script>
 </body>
 
 </html>

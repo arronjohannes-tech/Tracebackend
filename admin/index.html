@@ -81,6 +81,11 @@
           <p class="hint">Leere Secret-Felder behalten den vorhandenen Wert. „Löschen“ entfernt ihn.</p>
           <form id="config-form" class="form-grid admin-only">
             <label class="checkbox"><input name="satelliteEnabled" type="checkbox"> Satellitenanalyse aktiv</label>
+            <label class="checkbox"><input name="satelliteComparisonEnabled" type="checkbox">
+              Wischvergleich: 31.12.2020 / aktuelles Copernicus-Bild / Google Maps</label>
+            <p class="hint">Nur Aufnahmen vom 31.12.2020 (UTC), ohne Ersatzdatum. Fehlende Aufnahmen werden
+              angezeigt. Copernicus muss eingerichtet sein; für den Google-Vergleich zusätzlich Google Maps.
+              Der aktuelle Copernicus-Suchzeitraum wird angezeigt. Googles Aufnahmezeitpunkt ist nicht garantiert.</p>
             <label>Satelliten-API-Endpunkt<input name="satelliteEndpoint" type="url" placeholder="https://..."></label>
             <label>Satelliten-API-Schlüssel<input name="satelliteApiKey" type="password"
                 autocomplete="new-password"></label>
@@ -102,6 +107,24 @@
             <label class="checkbox"><input name="clearPassword" type="checkbox"> Passwort löschen</label>
             <label class="checkbox"><input name="clearClientId" type="checkbox"> Client-ID löschen</label>
             <button type="submit">Konfiguration speichern</button>
+          </form>
+          <h3>Google Maps (zusätzliche Kartenquelle)</h3>
+          <p class="hint">Maps JavaScript API im Google-Cloud-Projekt aktivieren und Abrechnung einrichten.
+            Einen eigenen Browser-API-Key mit Website-Beschränkung auf
+            <code>https://tracehub-ten.vercel.app/*</code> und gegebenenfalls eure weiteren Web-Domains
+            verwenden. Als API-Beschränkung nur „Maps JavaScript API“ freigeben. Google Maps kann
+            nutzungsabhängige Kosten verursachen.</p>
+          <p class="hint">Der Schlüssel wird verschlüsselt gespeichert und hier nicht angezeigt.
+            Bei der Kartennutzung wird er an den angemeldeten Browser und Google übermittelt.
+            Leeres Feld behält den Schlüssel. Zum Löschen Google Maps deaktivieren und „Schlüssel löschen“ wählen.</p>
+          <p id="google-maps-status" role="status"></p>
+          <form id="google-maps-form" class="form-grid admin-only">
+            <label class="checkbox"><input name="enabled" type="checkbox" disabled> Google Maps aktivieren</label>
+            <label>Google Maps Browser-API-Key<input name="apiKey" type="password"
+                autocomplete="new-password" minlength="20" maxlength="256" pattern="[A-Za-z0-9_\-]+"
+                title="Mindestens 20 Zeichen: Buchstaben, Ziffern, Bindestrich oder Unterstrich." disabled></label>
+            <label class="checkbox"><input name="clearApiKey" type="checkbox" disabled> Schlüssel löschen</label>
+            <button type="submit" disabled>Google Maps speichern</button>
           </form>
         </section>
 
@@ -283,7 +306,7 @@
     </div>
     <div id="message" role="status" aria-live="polite"></div>
   </main>
-  <script type="module" src="/admin/app.js"></script>
+  <script type="module" src="/admin/app.js?v=2"></script>
 </body>
 
 </html>

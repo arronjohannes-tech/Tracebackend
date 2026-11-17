@@ -11,6 +11,7 @@ import {
   extensionFor,
   ProcessApiError,
   type Bbox,
+  type ComparisonPeriod,
   type ProcessClient,
   type ProcessCredentials,
 } from "../copernicus/process-client.js";
@@ -40,6 +41,7 @@ export type BackgroundImage = {
   image: string;
   from: string;
   to: string;
+  projection?: "EPSG:3857";
 };
 export type AnalysisOutcome = {
   results: AnalysisResult[];
@@ -220,15 +222,20 @@ export function createCopernicusService(
       bbox: Bbox,
       now: Date = new Date(),
       longestSide = 1024,
+      comparison?: ComparisonPeriod,
     ): Promise<BackgroundImage> {
-      const { request, timeRange } = buildBackgroundRequest(runtime.settings, bbox, now, longestSide);
-      const result = await client.process(runtime.settings, runtime.credentials, request, "image/jpeg");
+      const { request, timeRange } = buildBackgroundRequest(runtime.settings, bbox, now, longestSide, comparison);
+      if (comparison && !await client.hasBackgroundData(runtime.settings, runtime.credentials, bbox, timeRange)) {
+        throw new AppError(404, "SATELLITE_NO_IMAGERY", "No matching Sentinel-2 acquisition is available for this area and time range.");
+      }
+      const result = await client.process(runtime.settings, runtime.credentials, request, comparison ? "image/png" : "image/jpeg");
       return {
         bbox,
         contentType: result.contentType,
         image: result.bytes.toString("base64"),
         from: timeRange.from,
         to: timeRange.to,
+        ...(comparison ? { projection: "EPSG:3857" as const } : {}),
       };
     },
     async analyse(

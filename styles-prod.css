@@ -2990,6 +2990,105 @@ html[data-layout="classic"] .live-empty {
   height: 100%;
 }
 
+.plot-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.plot-map-controls[hidden] {
+  display: none;
+}
+
+.plot-map-controls label {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.plot-map-controls select {
+  max-width: 100%;
+}
+
+.plot-map-controls .plot-map-switch input {
+  width: auto;
+  accent-color: var(--lime);
+}
+
+.plot-map-controls p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.google-plot-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: #202124;
+}
+
+.plot-map-controls label[hidden] {
+  display: none;
+}
+
+.comparison-layer,
+.comparison-google-host {
+  position: absolute;
+  inset: 0;
+}
+
+.comparison-top {
+  clip-path: inset(0 calc(100% - var(--comparison-position, 50%)) 0 0);
+}
+
+.comparison-divider {
+  position: absolute;
+  left: var(--comparison-position, 50%);
+  top: 0;
+  bottom: 40px;
+  width: 3px;
+  background: white;
+  box-shadow: 0 0 4px #202124;
+  pointer-events: none;
+}
+
+.comparison-labels {
+  position: absolute;
+  bottom: 60px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.comparison-labels span {
+  background: rgba(20, 30, 28, 0.85);
+  color: white;
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.comparison-google-image,
+.comparison-google-coverage {
+  position: absolute;
+  pointer-events: none;
+  max-width: none;
+}
+
+.comparison-google-coverage {
+  overflow: hidden;
+  background: #737373;
+}
+
 .geo-plot path {
   fill: rgba(53, 107, 86, 0.6);
   stroke: rgba(255, 255, 255, 0.9);
@@ -3252,6 +3351,7 @@ td small.plot-updated {
 }
 
 .map-attribution.failed,
+.map-attribution.noImagery,
 .map-attribution.unconfigured,
 .map-attribution.tooLarge {
   color: #ffd08a;

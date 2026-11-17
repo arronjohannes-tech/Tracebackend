@@ -211,7 +211,10 @@ production and does not validate the full PostGIS schema.
 | GET/POST | `/api/v1/shipments` | List or create shipments; create needs `system_admin`, `org_admin` or `reviewer` |
 | GET/PATCH/DELETE | `/api/v1/shipments/:id` | Show, partially update (reviewer and up) or delete (administrators only) a shipment |
 | GET | `/api/v1/plots` | Plots with GeoJSON polygon, centroid and computed validation (geofence, plausible area, self-intersection, duplicate, EO analysis) plus the number of open corrections |
-| GET | `/api/v1/plots/satellite-background?bbox=west,south,east,north&size=1024` | Unclipped true-colour Sentinel-2 image (Copernicus Process API) for a bounding box of at most 0.1°, as `{bbox,contentType,image(base64),from,to}`. Optional longest-side `size`: 256, 512, 1024 (default), or 2048 pixels. Needs the organization's Copernicus configuration (`409 SATELLITE_NOT_CONFIGURED` otherwise); cache keys include organization, weekly interval, bbox and size. Concurrent identical requests share one provider call within each backend instance; failed calls can be retried. |
+| GET/PUT | `/api/v1/admin/organizations/:organizationId/google-maps` | Organization/system administrators only. GET returns `{enabled,hasApiKey}` without the key. PUT accepts `{enabled,apiKey?}`; omitted key preserves it, `null` clears it while disabled. Requires migration 015; keys are encrypted with `CONFIG_ENCRYPTION_KEY`, and audit details exclude their values. |
+| GET | `/api/v1/plots/google-maps-config` | Authenticated plot-read access in the selected organization. Returns `{enabled,apiKey}` for browser SDK initialization (`apiKey:null` when disabled), with `Cache-Control: private, no-store`. This is a restricted browser key, not a server-only secret: enforce Website/API restrictions and billing quotas in Google Cloud. |
+| GET | `/api/v1/plots/satellite-background?bbox=west,south,east,north&size=1024` | Unclipped true-colour Sentinel-2 image (Copernicus Process API) for a bounding box of at most 0.1°, as `{bbox,contentType,image(base64),from,to}`. Optional longest-side `size`: 256, 512, 1024 (default), or 2048 pixels. Needs the organization's Copernicus configuration (`409 SATELLITE_NOT_CONFIGURED` otherwise); cache keys include organization, weekly interval, bbox and size. Concurrent identical requests share one provider call within each backend instance; failed calls can be retried. Optional `comparison=baseline\|current` requires tenant activation, returns PNG with `projection:"EPSG:3857"` (bbox remains WGS84), and checks acquisition availability through Catalog API. Baseline is only 2020-12-31 UTC; current uses most-recent mosaicking in the configured lookback (minimum 60 days). No matching acquisition: `404 SATELLITE_NO_IMAGERY`, without a substitute period. No-data pixels are opaque grey. Comparison cache keys are separate; historical keys are date-fixed rather than weekly. |
+| GET | `/api/v1/plots/map-comparison-config` | Authenticated, tenant-scoped `{enabled}` with plots read permission and private/no-store caching. Defaults to false. |
 | GET | `/api/v1/plots/:id/versions` | All stored GeoJSON versions of a plot (newest first); the captured geometry is always listed as the current version if it was never edited in Tracehub |
 | PUT | `/api/v1/plots/:id/geometry` | `{polygon,baseRevision,note?}` (writers only): stores the manually adjusted polygon as a new version, raises `plots.revision`, re-evaluates the geofence, recomputes `area_ha`, moves matching GPS track points and queues a sync change so the mobile app pulls it. `409 PLOT_REVISION_CONFLICT` when the plot changed meanwhile, `422 INVALID_GEOMETRY` for self-intersecting polygons |
 | GET/POST | `/api/v1/plot-corrections` | List (`?status=&plotId=`) or create correction requests; create needs `system_admin`, `org_admin` or `reviewer`. Body: `{scope:"plot",plotId}`, `{scope:"group",groupType:"supplier"\|"producer",groupKey}` or `{scope:"all"}`, plus `category` and `message` |
@@ -301,8 +304,8 @@ history. Field agents have no Admin SPA access.
 
 The satellite analysis can use the **Process** service (`POST /process/v1`) of the Copernicus Data
 Space Ecosystem / Sentinel Hub (specification: `openapi.v1.yaml`, tag group "Process API"). The
-other services of that specification (Catalog, Async, Batch, Statistics, BYOC, Zarr, TPDI) are not
-integrated.
+Catalog (`POST /catalog/v1/search`) is additionally used to check acquisition availability for the
+optional swipe comparison. Async, Batch, Statistics, BYOC, Zarr and TPDI are not integrated.
 
 - Configure it per organization in the admin area, tab **Copernicus Process**. The settings are
   stored in `organization_copernicus_process_config` (migration `007_copernicus_process.sql`), so the
@@ -321,6 +324,26 @@ integrated.
   `failures[]`; the operation fails if no plot succeeds.
 - Only `https` hosts below `dataspace.copernicus.eu` or `sentinel-hub.com` are accepted for the Process
   API and token URLs; redirects are rejected.
+
+### Historical swipe comparison
+
+Apply migration `016_satellite_comparison.sql` before deploying. It adds
+`organization_api_config.satellite_comparison_enabled NOT NULL DEFAULT false` under the existing tenant RLS.
+Organization/system administrators activate it under **API / EU**, via
+`PUT /api/v1/admin/organizations/:organizationId/config` with `satelliteComparisonEnabled: true`.
+GET returns the flag; omitting it on PUT preserves the stored value for older clients. Changes are audited.
+Both comparison periods require activation before accessing even a cached image (`403` when disabled).
+Normal backgrounds and satellite analysis operations retain their existing behavior.
+
+The baseline request never widens the UTC day 2020-12-31. The Catalog availability check uses the same
+Sentinel-2 L2A collection, WGS84 bbox, cloud threshold and time range as the Process request.
+Catalog/network errors surface as errors, not as absent imagery. Image generation uses Web Mercator
+for matching Google overlays; the response bbox is still WGS84. The browser hides the comparison
+if any requested area lacks an acquisition and does not substitute newer historical imagery.
+The current image uses the most recent data within the displayed search window (minimum 60 days),
+not necessarily today's imagery. Google imagery has no guaranteed capture date. Missing coverage
+within an available acquisition is grey, not transparent to the current Google imagery beneath it.
+
 ## Validation
 
 ```powershell

@@ -1,9 +1,9 @@
 import type { Pool } from "pg";
 import { z } from "zod";
 import type { AppConfig } from "../config.js";
-import { AppError, badRequest } from "../errors.js";
-import { withContext } from "../db.js";
-import { ProcessApiError, type Bbox } from "../copernicus/process-client.js";
+import { AppError, badRequest, forbidden } from "../errors.js";
+import { queryOne, withContext } from "../db.js";
+import { ProcessApiError, type Bbox, type ComparisonPeriod } from "../copernicus/process-client.js";
 import { createObjectStore, type ObjectStore } from "../infrastructure/object-store.js";
 import type { AuthContext } from "../types.js";
 import { createCopernicusService, type BackgroundImage, type CopernicusService } from "./copernicus-service.js";
@@ -17,6 +17,7 @@ export const backgroundQuerySchema = z.object({
     bbox: z.string().regex(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/, "bbox must be west,south,east,north."),
     size: z.coerce.number().refine((value) => [256, 512, 1024, 2048].includes(value),
         "size must be 256, 512, 1024 or 2048.").default(1024),
+    comparison: z.enum(["baseline", "current"]).optional(),
 });
 
 // Snapping to 5 decimals (about one metre) lets identical map views share one cached image.
@@ -47,6 +48,11 @@ export function createSatelliteBackgroundService(
     now: () => Date = () => new Date(),
 ) {
     const inFlight = new Map<string, Promise<BackgroundImage>>();
+    const configuration = (auth: AuthContext, organizationId: string) => withContext(pool, auth, async (client) => {
+        const row = await queryOne<{ satellite_comparison_enabled: boolean }>(client,
+            "SELECT satellite_comparison_enabled FROM organization_api_config WHERE organization_id=$1", [organizationId]);
+        return { enabled: row?.satellite_comparison_enabled ?? false };
+    });
     // The cache is an optimisation only: a missing or failing object store must never block the image.
     const store = (): ObjectStore | null => {
         try {
@@ -56,7 +62,7 @@ export function createSatelliteBackgroundService(
         }
     };
 
-    async function fetchImage(auth: AuthContext, organizationId: string, bbox: Bbox, size: number, key: string) {
+    async function fetchImage(auth: AuthContext, organizationId: string, bbox: Bbox, size: number, key: string, comparison?: ComparisonPeriod) {
         const cache = store();
         if (cache) {
             try {
@@ -72,7 +78,7 @@ export function createSatelliteBackgroundService(
         }
         let image: BackgroundImage;
         try {
-            image = await copernicus.backgroundImage(runtime, bbox, now(), size);
+            image = await copernicus.backgroundImage(runtime, bbox, now(), size, comparison);
         } catch (error) {
             if (error instanceof ProcessApiError) {
                 throw new AppError(502, "SATELLITE_UNAVAILABLE", error.message);
@@ -90,12 +96,16 @@ export function createSatelliteBackgroundService(
     }
 
     return {
-        async get(auth: AuthContext, organizationId: string, bbox: Bbox, size = 1024): Promise<BackgroundImage> {
+        configuration,
+        async get(auth: AuthContext, organizationId: string, bbox: Bbox, size = 1024, comparison?: ComparisonPeriod): Promise<BackgroundImage> {
+            if (comparison && !(await configuration(auth, organizationId)).enabled) throw forbidden();
             const week = Math.floor(now().getTime() / CACHE_WEEK_MS);
-            const key = `satellite-background/${organizationId}/${week}/${size}/${bbox.map((value) => value.toFixed(5)).join("_")}.json`;
+            const period = comparison === "baseline" ? "baseline-2020-12-31-mercator"
+                : comparison === "current" ? `current-mercator/${week}` : String(week);
+            const key = `satellite-background/${organizationId}/${period}/${size}/${bbox.map((value) => value.toFixed(5)).join("_")}.json`;
             const pending = inFlight.get(key);
             if (pending) return pending;
-            const request = fetchImage(auth, organizationId, bbox, size, key);
+            const request = fetchImage(auth, organizationId, bbox, size, key, comparison);
             inFlight.set(key, request);
             try {
                 return await request;

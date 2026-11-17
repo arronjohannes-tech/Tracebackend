@@ -16,6 +16,7 @@ import {
 import { encryptSecret } from "../security.js";
 import { roles, type Role } from "../types.js";
 import { createUserManagementService, createUserSchema, updateUserSchema } from "../services/user-management-service.js";
+import { createGoogleMapsService, googleMapsConfigSchema } from "../services/google-maps-service.js";
 
 const organizationSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -30,6 +31,7 @@ const adminUserQuerySchema = z.object({
 });
 const configSchema = z.object({
   satelliteEnabled: z.boolean(),
+  satelliteComparisonEnabled: z.boolean().optional(),
   satelliteEndpoint: z.string().url().nullable().default(null),
   satelliteApiKey: z.string().max(2048).nullable().optional(),
   evidencePackEnabled: z.boolean(),
@@ -90,6 +92,7 @@ function apiConfig(row: Record<string, unknown>) {
   return {
     organizationId: row.organization_id,
     satelliteEnabled: row.satellite_enabled,
+    satelliteComparisonEnabled: row.satellite_comparison_enabled ?? false,
     satelliteEndpoint: row.satellite_endpoint,
     hasSatelliteApiKey: Boolean(row.satellite_api_key_ciphertext),
     evidencePackEnabled: row.evidence_pack_enabled,
@@ -114,6 +117,21 @@ export async function registerAdminRoutes(
 ): Promise<void> {
   const protectedRoute = { preHandler: authenticate };
   const userManagement = createUserManagementService(pool);
+  const googleMaps = createGoogleMapsService(pool, config);
+
+  app.get("/api/v1/admin/organizations/:organizationId/google-maps", protectedRoute, async (request, reply) => {
+    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
+    ensureOrgAdministration(request, organizationId);
+    reply.header("Cache-Control", "no-store");
+    return sendData(reply, await googleMaps.adminConfig(request.auth!, organizationId));
+  });
+
+  app.put("/api/v1/admin/organizations/:organizationId/google-maps", protectedRoute, async (request, reply) => {
+    const { organizationId } = parse(z.object({ organizationId: uuidSchema }), request.params);
+    ensureOrgAdministration(request, organizationId);
+    return sendData(reply, await googleMaps.save(
+      request.auth!, organizationId, parse(googleMapsConfigSchema, request.body), request));
+  });
 
   app.get("/api/v1/admin/organizations", protectedRoute, async (request, reply) => {
     const auth = requireRoles(request, ["system_admin", "org_admin", "reviewer", "auditor"]);
@@ -282,9 +300,9 @@ export async function registerAdminRoutes(
            organization_id, satellite_enabled, satellite_endpoint,
            satellite_api_key_ciphertext, evidence_pack_enabled, eu_mode, eu_endpoint,
            eu_timeout_ms, eu_username_ciphertext, eu_password_ciphertext,
-           eu_client_id_ciphertext, extra_config
+           eu_client_id_ciphertext, extra_config, satellite_comparison_enabled
          ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, COALESCE($17::boolean, false)
          )
          ON CONFLICT (organization_id) DO UPDATE SET
            satellite_enabled = EXCLUDED.satellite_enabled,
@@ -297,7 +315,8 @@ export async function registerAdminRoutes(
            eu_username_ciphertext = CASE WHEN $14 THEN EXCLUDED.eu_username_ciphertext ELSE organization_api_config.eu_username_ciphertext END,
            eu_password_ciphertext = CASE WHEN $15 THEN EXCLUDED.eu_password_ciphertext ELSE organization_api_config.eu_password_ciphertext END,
            eu_client_id_ciphertext = CASE WHEN $16 THEN EXCLUDED.eu_client_id_ciphertext ELSE organization_api_config.eu_client_id_ciphertext END,
-           extra_config = EXCLUDED.extra_config
+           extra_config = EXCLUDED.extra_config,
+           satellite_comparison_enabled = COALESCE($17::boolean, organization_api_config.satellite_comparison_enabled)
          RETURNING *`,
         [
           organizationId,
@@ -316,10 +335,12 @@ export async function registerAdminRoutes(
           username !== undefined,
           password !== undefined,
           clientId !== undefined,
+          body.satelliteComparisonEnabled ?? null,
         ]);
       await writeAudit(client, request, auth, "api_config.update", "organization", organizationId, {
         organizationId,
         satelliteEnabled: body.satelliteEnabled,
+        satelliteComparisonEnabled: body.satelliteComparisonEnabled,
         satelliteEndpoint: body.satelliteEndpoint,
         evidencePackEnabled: body.evidencePackEnabled,
         euMode: body.eu.mode,

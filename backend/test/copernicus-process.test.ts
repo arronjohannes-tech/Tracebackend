@@ -9,6 +9,7 @@ import { buildApp } from "../src/application.js";
 import type { AppConfig } from "../src/config.js";
 import {
   buildEvalscript,
+  BASELINE_RANGE,
   buildProcessRequest,
   clearTokenCache,
   createProcessClient,
@@ -177,6 +178,61 @@ test("a custom evalscript is sent unchanged", () => {
   assert.equal(buildProcessRequest(settings, polygon).evalscript, evalscript);
 });
 
+test("Catalog checks the exact baseline date, refreshes expired tokens and distinguishes missing from failed imagery", async () => {
+  clearTokenCache();
+  const searches: Array<{ url: string; body: Record<string, unknown> }> = [];
+  let tokenRequests = 0;
+  let status = 401;
+  let features: unknown = [{ id: "acquisition" }];
+  const client = createProcessClient({ fetch: async (url, init) => {
+    if (String(url).includes("identity.")) return json({ access_token: `token-${++tokenRequests}`, expires_in: 600 });
+    searches.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+    if (status === 401) { status = 200; return json({}, 401); }
+    if (status === 502) return json({ message: "Unavailable" }, 502);
+    return json({ features });
+  } });
+  const settings = defaultProcessSettings();
+  const bbox: [number, number, number, number] = [36, 7, 36.01, 7.01];
+  assert.equal(await client.hasBackgroundData(settings, credentials, bbox, BASELINE_RANGE), true);
+  assert.equal(tokenRequests, 2);
+  assert.equal(searches[0]!.url, "https://sh.dataspace.copernicus.eu/catalog/v1/search");
+  assert.deepEqual(searches[0]!.body.bbox, bbox);
+  assert.equal(searches[0]!.body.datetime, "2020-12-31T00:00:00.000Z/2020-12-31T23:59:59.999Z");
+  features = [];
+  assert.equal(await client.hasBackgroundData(settings, credentials, bbox, BASELINE_RANGE), false);
+  features = null;
+  await assert.rejects(client.hasBackgroundData(settings, credentials, bbox, BASELINE_RANGE), ProcessApiError);
+  status = 502;
+  await assert.rejects(client.hasBackgroundData(settings, credentials, bbox, BASELINE_RANGE), ProcessApiError);
+});
+
+test("missing dated acquisitions produce an explicit no-imagery error without requesting or substituting an image", async () => {
+  let available = false;
+  let processCalls = 0;
+  const settings = defaultProcessSettings();
+  const runtime = { settings, credentials };
+  const service = createCopernicusService({} as Pool, baseConfig(), {
+    getToken: async () => "unused",
+    hasBackgroundData: async (_settings, _credentials, _bbox, range) => {
+      assert.deepEqual(range, BASELINE_RANGE);
+      return available;
+    },
+    process: async (_settings, _credentials, _body, accept) => {
+      processCalls += 1;
+      assert.equal(accept, "image/png");
+      return { contentType: "image/png", bytes: png };
+    },
+  });
+  const bbox: [number, number, number, number] = [36, 7, 36.01, 7.01];
+  await assert.rejects(service.backgroundImage(runtime, bbox, new Date(), 512, "baseline"),
+    (error: { statusCode?: number; code?: string }) => error.statusCode === 404 && error.code === "SATELLITE_NO_IMAGERY");
+  assert.equal(processCalls, 0);
+  available = true;
+  const image = await service.backgroundImage(runtime, bbox, new Date(), 512, "baseline");
+  assert.equal(image.projection, "EPSG:3857");
+  assert.equal(image.from, BASELINE_RANGE.from);
+  assert.equal(image.to, BASELINE_RANGE.to);
+});
 test("the client fetches a token once, reuses it and sends the Process API request", async () => {
   clearTokenCache();
   const calls: Array<{ url: string; init: RequestInit }> = [];

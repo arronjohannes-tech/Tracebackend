@@ -20,6 +20,42 @@ Node 24 verwenden. Eigene Datenbank und Umgebungsvariablen einrichten.
 
 Für den Satellitenhintergrund teilen sich nahe beieinanderliegende, markierte Parzellen einen Bildausschnitt. Weit entfernte Gruppen erhalten getrennte, geografisch positionierte Bilder; eine einzelne zu große Parzelle bleibt ohne Hintergrund. Der Browser lädt maximal drei Hintergrundbilder gleichzeitig. Die Auflösung folgt der dargestellten Kartengröße und Pixeldichte (256/512/1024/2048 Pixel an der längsten Seite, auch nach Fenstergrößenänderungen). Identische Abrufe werden pro Backend-Instanz zusammengefasst und nach Organisation, Bildausschnitt, Auflösung und Wochenintervall zwischengespeichert, sofern der Objektspeicher verfügbar ist. Zwischen getrennten Bildausschnitten wird kein Satellitenbild ergänzt.
 
+Die Polygonansicht bietet zusätzlich „Kartenquelle“ und „Satellitenbild“. In der bestehenden Karte blendet der Schalter den Copernicus-Hintergrund aus/ein, ohne neue Bildabrufe bei ausgeschaltetem Hintergrund. Google Maps ist eine zusätzliche, ausdrücklich auswählbare Quelle mit Straßen-/Satellitenansicht, Zoomen und Verschieben. Google wird erst bei dieser Auswahl geladen und erhält dann die dargestellten Standortdaten. Die Anzeige ersetzt keine EUDR-Prüfung. Parzellenauswahl und Korrekturanforderungen bleiben erhalten; „Position anpassen“ wechselt mit Hinweis zurück in den bestehenden Positionseditor.
+
+### Wischvergleich zum Stichtag 31.12.2020
+
+Vor dem Rollout Migration `016_satellite_comparison.sql` anwenden. Unter **Administration → Organisation → API / EU**
+den **Wischvergleich** aktivieren und die Konfiguration speichern (standardmäßig aus).
+Copernicus muss eingerichtet und die Satellitenanalyse aktiviert sein; für den zweiten Vergleich zusätzlich Google Maps.
+Unter **Plots → Polygon anzeigen → Wischvergleich** zwischen **31.12.2020 / Copernicus aktuell** und
+**31.12.2020 / Google Maps** wählen. Der Regler blendet links das historische und rechts das Vergleichsbild ein;
+er lässt sich per Maus, Touch und Tastatur bedienen. Auswahl, Korrekturanforderungen und Positionseditor bleiben erhalten.
+Positionsbearbeitung beendet den Vergleich und öffnet die bestehende Karte.
+
+Der historische Abruf ist strikt auf **31.12.2020, 00:00:00–23:59:59.999 UTC** begrenzt, unabhängig vom
+konfigurierten Rückblick. Die Catalog API prüft, ob im Ausschnitt eine Aufnahme mit dem konfigurierten
+Wolkenlimit existiert. Fehlt sie, erscheint ein Hinweis, ohne Ausweichdatum. Fehlende Teilflächen sind grau.
+„Aktuell“ verwendet die neuesten verfügbaren Sentinel-2-Daten im angezeigten Suchzeitraum
+(mindestens 60 Tage, gegebenenfalls länger laut Konfiguration), nicht zwingend eine Aufnahme von heute.
+Googles Aufnahmezeitpunkt ist unbekannt. Dies ist ein visueller Vergleich, kein automatischer Entwaldungsnachweis.
+
+Beide Vergleichsbilder werden deckungsgleich in Web Mercator angefordert; das historische Bild wird über Google
+geografisch verankert und folgt Zoom/Verschieben. Der Wischregler selbst löst keine API-Abrufe aus.
+Der historische Cache ist datumsfest; aktueller und bisheriger Hintergrund verwenden getrennte Wochen-Caches.
+Google-Quellenangaben und Logo bleiben sichtbar. Die Aktivierung wird für jeden Vergleichsabruf serverseitig geprüft.
+
+### Google Maps einrichten
+
+1. Vor dem Backend-Rollout Migration `015_google_maps_config.sql` über den bestehenden Migrationslauf anwenden.
+2. In einem eigenen Google-Cloud-Projekt die **Maps JavaScript API** aktivieren und ein Abrechnungskonto verknüpfen. Ein Google-Cloud-Projekt/API-Key wird nicht automatisch angelegt; je nach Nutzung entstehen Kosten.
+3. Einen **Browser-API-Key** erstellen: Anwendung auf **Websites (HTTP-Referrer)** beschränken, `https://tracehub-ten.vercel.app/*` und nur tatsächlich verwendete weitere Web-Domains freigeben. API-Beschränkung auf **Maps JavaScript API** setzen; Quoten und Kostenwarnungen im Google-Cloud-Projekt einrichten. Für lokale Tests einen separaten, auf die lokale Test-Origin beschränkten Schlüssel verwenden.
+4. Unter [Tracebackend Administration](https://tracehub-ten.vercel.app/admin) als System-/Organisationsadministrator die Organisation wählen, **API / EU → Google Maps** öffnen, den Schlüssel hinterlegen und Google Maps aktivieren. Leere Eingabe behält den Schlüssel. Zum Entfernen deaktivieren und „Schlüssel löschen“ wählen.
+5. Unter **Plots → Polygon anzeigen → Kartenquelle: Google Maps** testen. „Satellitenbild“ schaltet zwischen Google-Straßenkarte und Satellitenansicht um. Bei Schlüssel-/Organisationswechsel oder korrigierten Google-Zugriffsbeschränkungen die Seite neu laden.
+
+Die Konfiguration ist organisationsbezogen, der Schlüssel liegt verschlüsselt in der Datenbank. Die Adminansicht und das Audit geben ihn nicht zurück. Der Browser erhält ihn nur authentifiziert mit Parzellen-Leserecht und `Cache-Control: no-store`; für eine Browser-API ist der Schlüssel im Browser dennoch einsehbar. Deshalb sind die Google-seitigen API-/Website-Beschränkungen zwingend. Google-Kacheln werden nicht durch den Copernicus-Bildcache geleitet; Google-Logo und Quellenangaben des SDK bleiben sichtbar. Die bestehende Karte und Satellitenanalyse funktionieren unabhängig von Google Maps.
+
+Google-Dokumentation: [Maps JavaScript API laden](https://developers.google.com/maps/documentation/javascript/load-maps-js-api), [API-Key absichern](https://developers.google.com/maps/api-security-best-practices).
+
 In der Polygonansicht (PROD) startet „Satellitenanalyse starten“ den Abruf für alle angezeigten Parzellen. Pro Parzelle wird nacheinander ein eigener, idempotenter API-Auftrag angelegt, damit das Copernicus-Limit pro Lauf keine markierten Parzellen überspringt. Voraussetzung sind die aktivierte Satellitenfunktion und eine vollständig eingerichtete Copernicus-Process-Anbindung; starten dürfen Organisationsadministratoren, Prüfer und Feldmitarbeiter. Testläufe ohne echten Provider werden ausdrücklich gekennzeichnet. „Ergebnis / Status laden“ ruft gespeicherte Aufträge auch nach einem Neuladen ab; PNG/JPEG lassen sich authentifiziert anzeigen, TIFF herunterladen. Die Anzeige ersetzt keine fachliche Entwaldungs- oder EUDR-Bewertung.
 Bei Fehlern unterscheiden neue Analyseaufträge die Schritte `geometry`, `token`, `process` und `storage`. Speicherfehler melden ausdrücklich, wenn das Satellitenbild bereits empfangen wurde, und geben Hinweise zu S3-Zugangsdaten, Berechtigungen oder dem Bucket. Ungefilterte Speicherfehlermeldungen mit internen Pfaden oder Zugangsdaten werden nicht an den Browser übermittelt. „Ergebnis / Status laden“ bestätigt die Aktualisierung, startet jedoch keinen neuen Abruf. Bereits gespeicherte generische Fehlermeldungen bleiben unverändert; zur Diagnose nach dem Backend-Update einen neuen Analyseauftrag starten.
 Migrationen 001–004 sind vorbereitet, aber nicht auf einer produktiven Datenbank angewendet.

@@ -161,9 +161,12 @@ async function loadUsers() {
 }
 
 async function loadConfig() {
-  const config = await api(`/api/v1/admin/organizations/${state.organizationId}/config`);
+  const organizationId = state.organizationId;
+  const config = await api(`/api/v1/admin/organizations/${organizationId}/config`);
+  if (state.organizationId !== organizationId) return;
   const form = $("#config-form");
   form.satelliteEnabled.checked = config.satelliteEnabled;
+  form.satelliteComparisonEnabled.checked = config.satelliteComparisonEnabled;
   form.satelliteEndpoint.value = config.satelliteEndpoint ?? "";
   form.satelliteApiKey.placeholder = config.hasSatelliteApiKey ? "Gespeichert (wird nicht angezeigt)" : "";
   form.evidencePackEnabled.checked = config.evidencePackEnabled;
@@ -173,6 +176,39 @@ async function loadConfig() {
   form.username.placeholder = config.eu.hasUsername ? "Gespeichert (wird nicht angezeigt)" : "";
   form.euPassword.placeholder = config.eu.hasPassword ? "Gespeichert (wird nicht angezeigt)" : "";
   form.clientId.placeholder = config.eu.hasClientId ? "Gespeichert (wird nicht angezeigt)" : "";
+  await loadGoogleMaps();
+}
+
+function enableGoogleMapsForm(enabled) {
+  for (const element of $("#google-maps-form").elements) element.disabled = !enabled;
+}
+
+function resetGoogleMapsForm() {
+  $("#google-maps-form").reset();
+  enableGoogleMapsForm(false);
+  $("#google-maps-status").textContent = "";
+}
+
+function showGoogleMapsConfig(config) {
+  const form = $("#google-maps-form");
+  form.reset();
+  form.elements.enabled.checked = config.enabled;
+  form.elements.apiKey.placeholder = config.hasApiKey ? "Gespeichert (wird nicht angezeigt)" : "Noch nicht hinterlegt";
+  $("#google-maps-status").textContent = config.enabled ? "Google Maps ist aktiv." : "Google Maps ist deaktiviert.";
+  enableGoogleMapsForm(true);
+}
+
+async function loadGoogleMaps() {
+  const organizationId = state.organizationId;
+  resetGoogleMapsForm();
+  $("#google-maps-status").textContent = "Google-Maps-Konfiguration wird geladen …";
+  try {
+    const config = await api(`/api/v1/admin/organizations/${organizationId}/google-maps`);
+    if (state.organizationId === organizationId) showGoogleMapsConfig(config);
+  } catch (error) {
+    if (state.organizationId === organizationId) $("#google-maps-status").textContent = error.message;
+    throw error;
+  }
 }
 
 const copernicusPath = () => `/api/v1/admin/organizations/${state.organizationId}/copernicus-process`;
@@ -326,6 +362,7 @@ $("#logout").addEventListener("click", async () => {
 
 $("#organization-select").addEventListener("change", async (event) => {
   state.organizationId = event.target.value;
+  resetGoogleMapsForm();
   showSelectedOrganization();
   await loadActiveTab();
 });
@@ -396,6 +433,30 @@ $("#users").addEventListener("click", async (event) => {
   } catch (error) { message(error.message, true); }
 });
 
+$("#google-maps-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const organizationId = state.organizationId;
+  const body = {
+    enabled: form.elements.enabled.checked,
+    apiKey: form.elements.clearApiKey.checked ? null : form.elements.apiKey.value.trim() || undefined,
+  };
+  enableGoogleMapsForm(false);
+  try {
+    const config = await api(`/api/v1/admin/organizations/${organizationId}/google-maps`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    if (state.organizationId === organizationId) showGoogleMapsConfig(config);
+    message("Google-Maps-Konfiguration gespeichert.");
+  } catch (error) {
+    if (state.organizationId === organizationId) $("#google-maps-status").textContent = error.message;
+    message(error.message, true);
+  } finally {
+    if (state.organizationId === organizationId) enableGoogleMapsForm(true);
+  }
+});
+
 $("#config-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -405,6 +466,7 @@ $("#config-form").addEventListener("submit", async (event) => {
       method: "PUT",
       body: JSON.stringify({
         satelliteEnabled: form.satelliteEnabled.checked,
+        satelliteComparisonEnabled: form.satelliteComparisonEnabled.checked,
         satelliteEndpoint: form.satelliteEndpoint.value || null,
         satelliteApiKey: secret(form.satelliteApiKey, form.clearSatelliteApiKey),
         evidencePackEnabled: form.evidencePackEnabled.checked,

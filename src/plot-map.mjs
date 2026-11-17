@@ -151,6 +151,21 @@ export function createProjection(plots, bbox = null) {
   return buildProjection(minLng, maxLng, minLat, maxLat, { padding: PADDING });
 }
 
+export function createMercatorProjection(bbox) {
+  const mercator = ([lng, lat]) => [lng * Math.PI / 180, Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+  const [west, south] = mercator(bbox.slice(0, 2));
+  const [east, north] = mercator(bbox.slice(2));
+  const scale = Math.min(VIEW_WIDTH / (east - west), VIEW_HEIGHT / (north - south));
+  return {
+    width: (east - west) * scale, height: (north - south) * scale,
+    project(point) {
+      const [x, y] = mercator(point);
+      return [(x - west) * scale, (north - y) * scale];
+    },
+    pixelsPerMetre: scale / (6378137 * Math.cos((bbox[1] + bbox[3]) * Math.PI / 360)),
+  };
+}
+
 /** Largest 1/2/5 x 10^n metre length that is not longer than the requested pixel width. */
 export function niceScale(pixelsPerMetre, targetPixels = 160) {
   const metres = targetPixels / pixelsPerMetre;
@@ -189,7 +204,8 @@ function centroidOf(plot, ring, project) {
  * draggable handles and `ghost` outlines the position the editing started from.
  */
 export function buildMapSvg(plots, options, escape) {
-  const projection = createProjection(plots, options.bbox ?? null);
+  const projection = options.mercator && options.bbox
+    ? createMercatorProjection(options.bbox) : createProjection(plots, options.bbox ?? null);
   if (!projection) return "";
   const { project, pixelsPerMetre, width, height } = projection;
   const shapes = plots.map((plot, index) => {

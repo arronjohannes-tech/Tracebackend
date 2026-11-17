@@ -44,7 +44,7 @@ for (const page of ["index-demo.html", "index-prod.html"]) {
 test("all translation keys used by the production script exist", async () => {
   const script = (await Promise.all([
     "../app-prod.js", "../src/access-management.mjs", "../src/password-recovery.mjs",
-    "../src/registration-management.mjs",
+    "../src/registration-management.mjs", "../src/google-plot-map.mjs",
   ]
     .map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
   const keys = [

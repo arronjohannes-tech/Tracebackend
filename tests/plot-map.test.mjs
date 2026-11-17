@@ -218,3 +218,14 @@ test("a stored version becomes a GeoJSON feature", () => {
   assert.equal(feature.properties.createdBy, "Reviewer");
   assert.ok(!("note" in feature.properties));
 });
+test("Mercator backgrounds and polygons share the same projection at high latitude", async () => {
+  const { createMercatorProjection } = await import("../src/plot-map.mjs");
+  const projection = createMercatorProjection([36, 60, 36.02, 60.02]);
+  assert.deepEqual(projection.project([36, 60.02]), [0, 0]);
+  const bottomRight = projection.project([36.02, 60]);
+  assert.equal(bottomRight[0], projection.width);
+  assert.equal(bottomRight[1], projection.height);
+  const [middleX, middleY] = projection.project([36.01, 60.01]);
+  assert.ok(Math.abs(middleX - projection.width / 2) < 1e-8);
+  assert.ok(Math.abs(middleY - projection.height / 2) > 0.01);
+});

@@ -3,18 +3,19 @@ import {
   SUPPORTED_LANGUAGES,
   applyTranslations,
   translate,
-} from "./src/i18n.mjs?v=2";
-import { format } from "./src/i18n-prod.mjs?v=2";
+} from "./src/i18n.mjs?v=4";
+import { format } from "./src/i18n-prod.mjs?v=4";
 import { initEditionSwitch } from "./src/edition.mjs?v=1";
 import {
   backgroundAreas, backgroundResolution, backgroundBbox, bboxContains, bboxKey, bboxTooLarge, buildMapSvg, clampToBbox, createProjection,
   geoJsonFeature, groupOptions, maxDisplacementMetres, metresToDegrees, moveVertex, outerRing, plotTone,
   plotsInGroup, plotsForPolygonView, ringIsSimple, ringPath, sameRing, translateRing,
-} from "./src/plot-map.mjs?v=3";
+} from "./src/plot-map.mjs?v=4";
 import { canRequestSatellite, satelliteOutcome } from "./src/satellite.mjs?v=1";
 import { initAccessManagement } from "./src/access-management.mjs?v=1";
 import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
 import { initPasswordRecovery } from "./src/password-recovery.mjs?v=1";
+import { initGooglePlotMap } from "./src/google-plot-map.mjs?v=2";
 
 const SHIPMENT_STATUSES = ["planned", "in_transit", "arrived", "cancelled"];
 const CORRECTION_SCOPES = ["plot", "group", "all"];
@@ -53,6 +54,11 @@ const state = {
   plotsFailed: false,
   corrections: [],
   plotTab: "all",
+  mapProvider: "copernicus",
+  mapSatellite: true,
+  mapComparison: "off",
+  comparisonPosition: 50,
+  comparisonConfig: null,
   selectedPlotIds: new Set(),
   backgrounds: new Map(),
   plotBboxes: new Map(),
@@ -220,6 +226,7 @@ const registrationManagement = initRegistrationManagement({
   refresh: refreshWorkspace,
 });
 const passwordRecovery = initPasswordRecovery({ t, onReset: showLogin });
+const googlePlotMap = initGooglePlotMap({ api, t, onSelect: selectPlotTab });
 
 function showToast(text, duration = 3200) {
   toast.textContent = text;
@@ -236,6 +243,7 @@ function showApp() {
 }
 
 function showLogin() {
+  googlePlotMap.clear();
   registrationManagement.invalidate();
   accessManagement.clear();
   state.dashboard = null;
@@ -245,6 +253,10 @@ function showLogin() {
   state.plotsFailed = false;
   state.corrections = [];
   state.plotTab = "all";
+  state.mapProvider = "copernicus";
+  state.mapSatellite = true;
+  state.mapComparison = "off";
+  state.comparisonConfig = null;
   state.selectedPlotIds.clear();
   state.backgrounds.clear();
   state.plotBboxes.clear();
@@ -470,6 +482,13 @@ function pumpBackgroundQueue() {
   while (activeBackgroundLoads < 3 && backgroundQueue.length) {
     const job = backgroundQueue.shift();
     if (state.user !== job.user || state.organizationId !== job.organizationId) continue;
+    const needed = job.comparison
+      ? state.mapComparison !== "off" && (job.comparison === "baseline" || state.mapComparison === "current")
+      : state.mapComparison === "off" && state.mapProvider === "copernicus" && state.mapSatellite;
+    if (!needed || state.plotTab === "all") {
+      state.backgrounds.delete(job.key);
+      continue;
+    }
     activeBackgroundLoads += 1;
     void loadBackground(job).finally(() => {
       activeBackgroundLoads -= 1;
@@ -494,34 +513,36 @@ function plotBbox(plot) {
   return bbox;
 }
 
-function backgroundEntry(bbox, size) {
+function backgroundEntry(bbox, size, comparison) {
   if (!bbox) return null;
   if (bboxTooLarge(bbox)) return { status: "tooLarge" };
-  const key = `${state.organizationId}:${bboxKey(bbox)}:${size}`;
+  const key = `${state.organizationId}:${comparison ?? "standard"}:${bboxKey(bbox)}:${size}`;
   const entry = state.backgrounds.get(key);
   if (entry?.status === "loading" && entry.user !== state.user) state.backgrounds.delete(key);
   if (!state.backgrounds.has(key)) {
     state.backgrounds.set(key, { status: "loading", key, user: state.user });
-    backgroundQueue.push({ bbox, size, key, user: state.user, organizationId: state.organizationId });
+    backgroundQueue.push({ bbox, size, comparison, key, user: state.user, organizationId: state.organizationId });
     pumpBackgroundQueue();
   }
   return state.backgrounds.get(key);
 }
 
-async function loadBackground({ bbox, size, key, user, organizationId }) {
+async function loadBackground({ bbox, size, comparison, key, user, organizationId }) {
   try {
-    const data = await api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}&size=${size}`);
+    const data = await api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}&size=${size}${comparison ? `&comparison=${comparison}` : ""}`);
     if (state.user !== user || state.organizationId !== organizationId) return;
     if (!/^image\/(jpeg|png)$/.test(data?.contentType ?? "")) throw new Error("Unexpected image type.");
+    if (comparison && data.projection !== "EPSG:3857") throw new Error("Unexpected comparison projection.");
     state.backgrounds.set(key, {
-      status: "ready", key, bbox, href: `data:${data.contentType};base64,${data.image}`, from: data.from, to: data.to,
+      status: "ready", key, bbox, comparison, href: `data:${data.contentType};base64,${data.image}`, from: data.from, to: data.to,
     });
   } catch (error) {
     if (state.user !== user || state.organizationId !== organizationId) return;
     if (error.status === 401) { showLogin(); return; }
     state.backgrounds.set(key, {
-      status: error.code === "SATELLITE_NOT_CONFIGURED" ? "unconfigured" : "failed",
-      message: error.message, key,
+      status: error.code === "SATELLITE_NOT_CONFIGURED" ? "unconfigured"
+        : error.code === "SATELLITE_NO_IMAGERY" ? "noImagery" : "failed",
+      message: error.message, key, comparison,
     });
   }
   redrawPlots();
@@ -541,11 +562,77 @@ function backgroundChip(entry) {
     unconfigured: t("prod.bg.unconfigured"),
     tooLarge: t("prod.bg.tooLarge"),
     failed: t("prod.bg.failed"),
+    noImagery: t(entry.comparison === "baseline" ? "prod.compare.noBaseline" : "prod.compare.noCurrent"),
   }[entry.status];
   const retry = entry.status === "failed"
     ? ` <button type="button" class="link-button" data-bg-retry="${escapeHtml(entry.key)}">${escapeHtml(t("prod.bg.retry"))}</button>`
     : "";
   return `<div class="map-attribution ${entry.status}" role="status" title="${escapeHtml(entry.message ?? "")}">${escapeHtml(text)}${retry}</div>`;
+}
+
+function renderGoogleMap(container, plots, options = {}) {
+  void googlePlotMap.render(container, plots, {
+    organizationId: state.organizationId, satellite: state.mapSatellite, ...options,
+  }).catch((error) => {
+    if (error.status === 401) showLogin();
+    else showToast(t("prod.map.failed"));
+  });
+}
+
+async function loadComparisonConfig() {
+  const organizationId = state.organizationId;
+  const user = state.user;
+  const entry = { organizationId, status: "loading", enabled: false };
+  state.comparisonConfig = entry;
+  try {
+    const config = await api("/api/v1/plots/map-comparison-config");
+    if (state.organizationId !== organizationId || state.user !== user) return;
+    Object.assign(entry, { status: "ready", enabled: config.enabled });
+  } catch (error) {
+    if (state.organizationId !== organizationId || state.user !== user) return;
+    if (error.status === 401) { showLogin(); return; }
+    Object.assign(entry, { status: "failed", message: error.message });
+  }
+  redrawPlots();
+}
+
+function renderComparison(container, plots, bbox) {
+  const areas = backgroundAreas(plots);
+  const entries = areas.map((area) => {
+    const size = mapResolution(area, bbox, `#${container.id}`);
+    return {
+      baseline: backgroundEntry(area, size, "baseline"),
+      current: state.mapComparison === "current" ? backgroundEntry(area, size, "current") : null,
+    };
+  });
+  const all = entries.flatMap(({ baseline, current }) => [baseline, ...(current ? [current] : [])]);
+  const missing = all.find((entry) => ["noImagery", "failed", "unconfigured", "tooLarge"].includes(entry.status))
+    ?? all.find((entry) => entry.status !== "ready");
+  if (missing) {
+    container.innerHTML = buildMapSvg(plots, { bbox, interactive: true }, escapeHtml) + backgroundChip(missing);
+    googlePlotMap.hide();
+    return;
+  }
+  const baseline = entries.map((entry) => entry.baseline);
+  const left = t("prod.compare.baseline");
+  const right = t(state.mapComparison === "google" ? "prod.compare.google" : "prod.compare.current");
+  container.style.setProperty("--comparison-position", `${state.comparisonPosition}%`);
+  const svg = (backgrounds) => buildMapSvg(plots, { bbox, mercator: true, interactive: true, backgrounds }, escapeHtml);
+  const current = entries.map((entry) => entry.current);
+  container.innerHTML = (state.mapComparison === "google"
+    ? '<div class="comparison-google-host"></div>'
+    : `<div class="comparison-layer">${svg(current)}</div><div class="comparison-layer comparison-top">${svg(baseline)}</div>`)
+    + '<div class="comparison-divider" aria-hidden="true"></div>'
+    + `<div class="comparison-labels"><span>${escapeHtml(left)}</span><span>${escapeHtml(right)}</span></div>`
+    + `<div class="map-attribution" role="status">${escapeHtml(t("prod.compare.credit"))}`
+    + (state.mapComparison === "current"
+      ? `<br>${escapeHtml(t("prod.compare.range", { from: formatDate(current[0].from), to: formatDate(current[0].to) }))}` : "")
+    + "</div>";
+  if (state.mapComparison === "google") {
+    renderGoogleMap($(".comparison-google-host", container), plots, {
+      comparisonImages: baseline, swipe: state.comparisonPosition,
+    });
+  }
 }
 
 /* ---------- GeoJSON versions ---------- */
@@ -642,6 +729,11 @@ function startEdit(plotId) {
   const bbox = plot ? plotBbox(plot) : null;
   if (!plot || !ring || !bbox || !canWrite()) return;
   if (state.edit && !discardEdit()) return;
+  if (state.mapProvider === "google" || state.mapComparison !== "off") {
+    state.mapComparison = "off";
+    state.mapProvider = "copernicus";
+    showToast(t("prod.map.editExisting"));
+  }
   state.edit = {
     plotId, baseRevision: plot.revision, bbox, note: "", saving: false, error: "", drag: null,
     original: ring.map((point) => [...point]), ring: ring.map((point) => [...point]),
@@ -840,6 +932,27 @@ function renderPlots() {
   const plot = state.plots.find((item) => item.id === state.plotTab);
   if (!plot && (state.plotTab !== "selection" || !state.plots.length)) state.plotTab = "all";
   const polygonView = state.plotTab !== "all";
+  if (state.comparisonConfig?.organizationId !== state.organizationId) {
+    state.comparisonConfig = null;
+    state.mapComparison = "off";
+  }
+  if (polygonView && !state.comparisonConfig) void loadComparisonConfig();
+  const comparisonConfig = state.comparisonConfig;
+  const comparing = state.mapComparison !== "off";
+  $("#plot-map-controls").hidden = !polygonView;
+  $("#plot-map-provider").value = state.mapProvider;
+  $("#plot-map-provider").disabled = Boolean(state.edit?.saving) || comparing;
+  $("#plot-map-satellite").checked = state.mapSatellite;
+  $("#plot-map-satellite").disabled = comparing;
+  $("#plot-map-comparison").value = state.mapComparison;
+  $("#plot-map-comparison").disabled = !comparisonConfig?.enabled || Boolean(state.edit?.saving);
+  $("#plot-comparison-position").hidden = !comparing;
+  $("#plot-comparison-position input").value = state.comparisonPosition;
+  $("#plot-comparison-status").textContent = comparisonConfig?.status === "failed" ? comparisonConfig.message
+    : comparisonConfig?.status === "loading" ? t("prod.compare.loading")
+    : comparisonConfig && !comparisonConfig.enabled ? t("prod.compare.disabled") : "";
+  $("#plot-comparison-retry").hidden = comparisonConfig?.status !== "failed";
+  if (!polygonView || (comparing ? state.mapComparison !== "google" : state.mapProvider !== "google")) googlePlotMap.hide();
   $("#show-polygons-button").hidden = polygonView;
   $("#show-polygons-button").disabled = !state.plots.length || state.plotsFailed;
   $("#plots-load-status").hidden = !state.plotsFailed;
@@ -1018,7 +1131,7 @@ function renderPlotsOverview() {
     `<span><i class="${tone}"></i>${escapeHtml(t(`prod.pv.legend.${tone}`))}</span>`).join("");
   // The list view hides this map; only the visible selection map may trigger a satellite request.
   const area = state.plotTab === "selection" ? backgroundBbox(plots) : null;
-  const backgrounds = area ? backgroundAreas(plots).map((bbox) =>
+  const backgrounds = area && state.mapComparison === "off" && state.mapProvider === "copernicus" && state.mapSatellite ? backgroundAreas(plots).map((bbox) =>
     backgroundEntry(bbox, mapResolution(bbox, area, "#plots-map"))) : [];
   const background = backgrounds.find((entry) => entry.status === "failed")
     ?? backgrounds.find((entry) => entry.status !== "ready") ?? backgrounds[0];
@@ -1028,6 +1141,11 @@ function renderPlotsOverview() {
       backgrounds: backgrounds.filter((entry) => entry.status === "ready"),
     }, escapeHtml)}${message}${backgroundChip(background)}
     <div class="map-key"><strong>${escapeHtml(t("prod.pv.count", { n: formatNumber(plots.length, 0) }))}</strong>${legend}</div>`;
+  if (area && state.mapComparison !== "off") {
+    renderComparison($("#plots-map"), plots, area);
+  } else if (area && state.mapProvider === "google") {
+    renderGoogleMap($("#plots-map"), plots);
+  }
 
   const checkRow = (tone, text) =>
     `<div><span class="check ${tone}">${CHECK_GLYPH[tone]}</span><span>${escapeHtml(text)}</span></div>`;
@@ -1124,8 +1242,9 @@ function renderPlotPane(plot) {
   const shown = editing ? { ...plot, polygon: { type: "Polygon", coordinates: [editing.ring] } } : plot;
   const bbox = plotBbox(plot);
   const mapElement = $("#plot-map");
-  const background = bbox && mapElement ? backgroundEntry(bbox, mapResolution(bbox, bbox, "#plot-map")) : null;
-  if (bbox && !mapElement) requestAnimationFrame(redrawPlots);
+  const background = bbox && mapElement && state.mapComparison === "off" && state.mapProvider === "copernicus" && state.mapSatellite
+    ? backgroundEntry(bbox, mapResolution(bbox, bbox, "#plot-map")) : null;
+  if (bbox && !mapElement && state.mapComparison === "off" && state.mapProvider === "copernicus" && state.mapSatellite) requestAnimationFrame(redrawPlots);
   $("#plot-pane").innerHTML = `
     <div class="map-layout">
       <article class="map-card">
@@ -1182,6 +1301,8 @@ function renderPlotPane(plot) {
         <tbody>${requestRows || emptyRow(6, "prod.corr.emptyPlot")}</tbody>
       </table>
     </article>`;
+  if (bbox && state.mapComparison !== "off") renderComparison($("#plot-map"), [plot], bbox);
+  else if (state.mapProvider === "google") renderGoogleMap($("#plot-map"), [plot]);
   if (editing) updateEditorUi();
 }
 
@@ -1683,6 +1804,37 @@ $("#request-group-button").addEventListener("click", () => openCorrectionForm("g
 $("#show-polygons-button").addEventListener("click", () => {
   const plots = plotsForPolygonView(state.plots, state.selectedPlotIds);
   if (plots.length) selectPlotTab(plots.length === 1 ? plots[0].id : "selection");
+});
+$("#plot-map-provider").addEventListener("change", (event) => {
+  const provider = event.target.value;
+  if (state.edit?.saving || (provider === "google" && !discardEdit())) {
+    event.target.value = state.mapProvider;
+    return;
+  }
+  state.mapProvider = provider;
+  renderPlots();
+});
+$("#plot-map-satellite").addEventListener("change", (event) => {
+  state.mapSatellite = event.target.checked;
+  renderPlots();
+});
+$("#plot-map-comparison").addEventListener("change", (event) => {
+  const mode = event.target.value;
+  if (!state.comparisonConfig?.enabled || state.edit?.saving || (mode !== "off" && !discardEdit())) {
+    event.target.value = state.mapComparison;
+    return;
+  }
+  state.mapComparison = mode;
+  if (mode !== "off") state.mapSatellite = true;
+  renderPlots();
+});
+$("#plot-comparison-retry").addEventListener("click", () => { void loadComparisonConfig(); renderPlots(); });
+$("#plot-comparison-position input").addEventListener("input", (event) => {
+  state.comparisonPosition = Number(event.target.value);
+  for (const map of [$("#plots-map"), $("#plot-map")].filter(Boolean)) {
+    map.style.setProperty("--comparison-position", `${state.comparisonPosition}%`);
+  }
+  googlePlotMap.setSwipe(state.comparisonPosition);
 });
 $("#plots-body").addEventListener("change", (event) => {
   const checkbox = event.target.closest("[data-plot-select]");

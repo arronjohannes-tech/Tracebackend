@@ -10,6 +10,7 @@ import {
     createPlotCorrectionService,
 } from "../services/plot-correction-service.js";
 import { createPlotGeometryService, geometryUpdateSchema } from "../services/plot-geometry-service.js";
+import { createGoogleMapsService } from "../services/google-maps-service.js";
 import {
     backgroundQuerySchema,
     createSatelliteBackgroundService,
@@ -32,8 +33,19 @@ export async function registerPlotRoutes(
     const service = createPlotCorrectionService(pool);
     const geometryService = createPlotGeometryService(pool);
     const backgroundService = createSatelliteBackgroundService(pool, config);
+    const googleMaps = createGoogleMapsService(pool, config);
     const secured = { preHandler: authenticate };
     const writers = ["system_admin", "org_admin", "reviewer"] as const;
+
+    app.get("/api/v1/plots/map-comparison-config", secured, async (request, reply) => {
+        reply.header("Cache-Control", "private, no-store");
+        return sendData(reply, await backgroundService.configuration(authOf(request), organizationFromRequest(request)));
+    });
+
+    app.get("/api/v1/plots/google-maps-config", secured, async (request, reply) => {
+        reply.header("Cache-Control", "private, no-store");
+        return sendData(reply, await googleMaps.browserConfig(authOf(request), organizationFromRequest(request)));
+    });
 
     app.get("/api/v1/plots", secured, async (request, reply) =>
         sendData(reply, await service.listPlots(authOf(request), organizationFromRequest(request))));
@@ -41,10 +53,10 @@ export async function registerPlotRoutes(
         preHandler: authenticate,
         config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
     }, async (request, reply) => {
-        const { bbox, size } = parse(backgroundQuerySchema, queryWithoutOrganization(request.query));
+        const { bbox, size, comparison } = parse(backgroundQuerySchema, queryWithoutOrganization(request.query));
         const image = await backgroundService.get(
-            authOf(request), organizationFromRequest(request), parseBackgroundBbox(bbox), size);
-        reply.header("Cache-Control", "private, max-age=3600");
+            authOf(request), organizationFromRequest(request), parseBackgroundBbox(bbox), size, comparison);
+        reply.header("Cache-Control", comparison ? "private, no-store" : "private, max-age=3600");
         return sendData(reply, image);
     });
 

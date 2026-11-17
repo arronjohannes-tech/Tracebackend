@@ -16,6 +16,7 @@ import { createRoleManagementService, matrixSchema } from "../src/services/role-
 import { createUserManagementService, createUserSchema, updateUserSchema } from "../src/services/user-management-service.js";
 import { roles, type AuthContext } from "../src/types.js";
 import { createRegistrationService, registrationSchema, registrationListSchema, registrationApprovalSchema } from "../src/services/registration-service.js";
+import { createGoogleMapsService } from "../src/services/google-maps-service.js";
 
 test("user lifecycle, role isolation and reset tokens work with real PostgreSQL", { skip: process.platform !== "win32", timeout: 300_000 }, async (t) => {
   const { initdb, postgres, pg_ctl } = await import("@embedded-postgres/windows-x64");
@@ -101,6 +102,80 @@ test("user lifecycle, role isolation and reset tokens work with real PostgreSQL"
       method: "GET", url, headers: { authorization: `Bearer ${await signAccessToken(config, auth)}` },
     });
     let managedId = "";
+    await t.test("Google Maps migration and encrypted settings preserve tenant isolation in PostgreSQL", async () => {
+      await db.query(`
+        CREATE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN NEW.updated_at=now(); RETURN NEW; END $$;
+        CREATE FUNCTION app_system_admin() RETURNS boolean LANGUAGE sql STABLE AS $$
+          SELECT current_setting('app.is_system_admin',true)='true' $$;
+        CREATE FUNCTION app_organization_id() RETURNS uuid LANGUAGE sql STABLE AS $$
+          SELECT NULLIF(current_setting('app.current_organization',true),'')::uuid $$;
+      `);
+      const migration = await readFile(new URL("../migrations/015_google_maps_config.sql", import.meta.url), "utf8");
+      await db.query(migration);
+      await db.query(migration);
+      await db.query("GRANT SELECT,INSERT,UPDATE,DELETE ON organization_google_maps_config TO test_app");
+      const maps = createGoogleMapsService(pool!, config);
+      const key = "test-google-browser-key-for-isolated-integration";
+      await maps.save(system, foreignOrg, { enabled: true, apiKey: key }, audit);
+      assert.deepEqual(await maps.browserConfig(admin, foreignOrg), { enabled: false, apiKey: null });
+      await assert.rejects(maps.save(admin, foreignOrg, { enabled: false }, audit),
+        (error: { code?: string }) => error.code === "42501");
+      await maps.save(admin, org, { enabled: true, apiKey: key }, audit);
+      const stored = await db.query("SELECT api_key_ciphertext FROM organization_google_maps_config WHERE organization_id=$1", [org]);
+      assert.notEqual(stored.rows[0].api_key_ciphertext, key);
+      assert.deepEqual(await maps.browserConfig(admin, org), { enabled: true, apiKey: key });
+      await maps.save(admin, org, { enabled: false, apiKey: null }, audit);
+      assert.deepEqual(await maps.adminConfig(admin, org), { enabled: false, hasApiKey: false });
+      await assert.rejects(db.query(
+        "UPDATE organization_google_maps_config SET enabled=true WHERE organization_id=$1", [org]),
+      (error: { code?: string }) => error.code === "23514");
+    });
+
+    await t.test("comparison migration defaults off and administration persists activation without opening tenant access", async () => {
+      await db.query(`
+        CREATE TABLE organization_api_config (
+          organization_id uuid PRIMARY KEY REFERENCES organizations(id), satellite_enabled boolean DEFAULT false,
+          satellite_endpoint text, satellite_api_key_ciphertext text, evidence_pack_enabled boolean DEFAULT false,
+          eu_mode text DEFAULT 'mock', eu_endpoint text, eu_timeout_ms integer DEFAULT 15000,
+          eu_username_ciphertext text, eu_password_ciphertext text, eu_client_id_ciphertext text,
+          extra_config jsonb DEFAULT '{}', updated_at timestamptz DEFAULT now()
+        );
+        ALTER TABLE organization_api_config ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE organization_api_config FORCE ROW LEVEL SECURITY;
+        CREATE POLICY api_config_tenant ON organization_api_config
+          USING (app_system_admin() OR organization_id=app_organization_id())
+          WITH CHECK (app_system_admin() OR organization_id=app_organization_id());
+        GRANT SELECT,INSERT,UPDATE,DELETE ON organization_api_config TO test_app;
+      `);
+      const migration = await readFile(new URL("../migrations/016_satellite_comparison.sql", import.meta.url), "utf8");
+      await db.query(migration);
+      await db.query(migration);
+      await db.query("INSERT INTO organization_api_config(organization_id) VALUES($1),($2)", [org, foreignOrg]);
+      const browserPath = "/api/v1/plots/map-comparison-config";
+      const initial = await request(admin, browserPath);
+      assert.deepEqual(initial.json().data, { enabled: false });
+      assert.match(String(initial.headers["cache-control"]), /no-store/);
+      const token = await signAccessToken(config, admin);
+      const save = async (organizationId: string, enabled?: boolean) => app.inject({
+        method: "PUT", url: `/api/v1/admin/organizations/${organizationId}/config`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          satelliteEnabled: true, evidencePackEnabled: false,
+          ...(enabled === undefined ? {} : { satelliteComparisonEnabled: enabled }),
+          eu: { mode: "mock", endpoint: null, timeoutMs: 15000 },
+        },
+      });
+      assert.equal((await save(org, true)).json().data.satelliteComparisonEnabled, true);
+      assert.deepEqual((await request(admin, browserPath)).json().data, { enabled: true });
+      assert.equal((await save(org)).json().data.satelliteComparisonEnabled, true);
+      assert.equal((await save(foreignOrg, true)).statusCode, 403);
+      assert.equal((await request(admin, `${browserPath}?organizationId=${foreignOrg}`)).statusCode, 403);
+      assert.equal((await save(org, false)).statusCode, 200);
+      const disabled = await request(admin, "/api/v1/plots/satellite-background?bbox=36,7,36.01,7.01&comparison=baseline");
+      assert.equal(disabled.statusCode, 403);
+    });
+
     await t.test("migration backfills legacy accounts; CRUD keeps tenant isolation and multi-role guards", async () => {
       assert.deepEqual((await db.query("SELECT assigned_roles::text[] AS assigned_roles FROM users WHERE id=$1", [legacyId])).rows[0].assigned_roles, ["auditor"]);
       const created = await users.create(admin, audit, org, createUserSchema.parse({

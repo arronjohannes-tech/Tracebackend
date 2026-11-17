@@ -53,6 +53,6 @@ export function routeSection(path: string): Section | null {
   if (/\/plots|\/plot-corrections|\/satellite|\/geofences|\/sync/.test(path)) return "plots";
   if (/\/reviews|\/audit-logs/.test(path)) return "risk";
   if (/\/documents|\/operations|\/evidence-packs|\/dds/.test(path)) return "dds";
-  if (/\/config|\/copernicus/.test(path)) return "roles";
+  if (/\/config|\/copernicus|\/google-maps/.test(path)) return "roles";
   return null;
 }

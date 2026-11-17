@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { GeoJsonPolygon } from "../types.js";
 import { isAllowedHost, type OutputFormat, type ProcessSettings } from "./process-settings.js";
 
@@ -40,7 +41,7 @@ export function outputSize(bbox: Bbox, longestSide: number): { width: number; he
     : { width: clamp(longestSide * (dx / dy)), height: clamp(longestSide) };
 }
 
-export function buildEvalscript(settings: ProcessSettings): string {
+export function buildEvalscript(settings: ProcessSettings, opaqueNoData = false): string {
   if (settings.preset === "custom") return settings.evalscript;
   const jpeg = settings.output.format === "image/jpeg";
   if (settings.preset === "sar_vv") {
@@ -80,6 +81,7 @@ function setup() {
 }
 function evaluatePixel(sample) {
   const gain = 2.5;
+  ${opaqueNoData ? "if (!sample.dataMask) return [0.45, 0.45, 0.45, 1];" : ""}
   return [gain * sample.B04, gain * sample.B03, gain * sample.B02${jpeg ? "" : ", sample.dataMask"}];
 }
 `;
@@ -160,34 +162,55 @@ export function buildProcessRequest(
 
 export const BACKGROUND_LONGEST_SIDE = 1024;
 const BACKGROUND_MIN_LOOKBACK_DAYS = 60;
+export type ComparisonPeriod = "baseline" | "current";
+export const BASELINE_RANGE = {
+  from: "2020-12-31T00:00:00.000Z",
+  to: "2020-12-31T23:59:59.999Z",
+};
+const mercatorPosition = ([lng, lat]: [number, number]): [number, number] => [
+  6378137 * lng * Math.PI / 180,
+  6378137 * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)),
+];
 
 // Unclipped true-colour Sentinel-2 view of a bounding box, independent of the analysis preset.
 export function buildBackgroundRequest(
   settings: ProcessSettings, bbox: Bbox, now: Date = new Date(), longestSide = BACKGROUND_LONGEST_SIDE,
+  comparison?: ComparisonPeriod,
 ) {
   const optical: ProcessSettings = {
     ...settings,
     dataset: "sentinel-2-l2a",
     preset: "true_color",
-    mosaickingOrder: "leastCC",
+    mosaickingOrder: comparison === "current" ? "mostRecent" : "leastCC",
     lookbackDays: Math.max(settings.lookbackDays, BACKGROUND_MIN_LOOKBACK_DAYS),
     s2: { ...settings.s2, upsampling: "BICUBIC", downsampling: "BICUBIC" },
-    output: { ...settings.output, format: "image/jpeg", jpegQuality: 85 },
+    output: { ...settings.output, format: comparison ? "image/png" : "image/jpeg", jpegQuality: 85 },
   };
-  const timeRange = {
+  const timeRange = comparison === "baseline" ? { ...BASELINE_RANGE } : {
     from: new Date(now.getTime() - optical.lookbackDays * 86_400_000).toISOString(),
     to: now.toISOString(),
   };
+  const southWest = mercatorPosition([bbox[0], bbox[1]]);
+  const northEast = mercatorPosition([bbox[2], bbox[3]]);
+  const projectedBbox: Bbox = [...southWest, ...northEast];
+  const width = projectedBbox[2] - projectedBbox[0];
+  const height = projectedBbox[3] - projectedBbox[1];
   const request = {
     input: {
-      bounds: { bbox, properties: { crs: CRS84 } },
+      bounds: {
+        bbox: comparison ? projectedBbox : bbox,
+        properties: { crs: comparison ? "http://www.opengis.net/def/crs/EPSG/0/3857" : CRS84 },
+      },
       data: [dataEntry(optical, timeRange)],
     },
     output: {
-      ...outputSize(bbox, longestSide),
-      responses: [{ identifier: "default", format: { type: "image/jpeg", quality: 85 } }],
+      ...(comparison ? {
+        width: Math.max(1, Math.round(longestSide * width / Math.max(width, height))),
+        height: Math.max(1, Math.round(longestSide * height / Math.max(width, height))),
+      } : outputSize(bbox, longestSide)),
+      responses: [{ identifier: "default", format: comparison ? { type: "image/png" } : { type: "image/jpeg", quality: 85 } }],
     },
-    evalscript: buildEvalscript(optical),
+    evalscript: buildEvalscript(optical, Boolean(comparison)),
   };
   return { request, timeRange };
 }
@@ -326,7 +349,37 @@ export function createProcessClient(options: { fetch?: typeof fetch; now?: () =>
     return { bytes, contentType: response.headers.get("content-type")?.split(";")[0]?.trim() || accept };
   }
 
-  return { getToken, process };
+  async function hasBackgroundData(
+    settings: ProcessSettings, credentials: ProcessCredentials, bbox: Bbox, timeRange: { from: string; to: string },
+  ): Promise<boolean> {
+    const search = async (refresh = false) => send("process", `${settings.baseUrl.replace(/\/+$/, "")}/catalog/v1/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json", Accept: "application/geo+json",
+        Authorization: `Bearer ${await getToken(settings, credentials, refresh)}`,
+      },
+      body: JSON.stringify({
+        bbox, datetime: `${timeRange.from}/${timeRange.to}`, collections: ["sentinel-2-l2a"], limit: 1,
+        filter: `eo:cloud_cover <= ${settings.maxCloudCoverage}`, "filter-lang": "cql2-text",
+      }),
+    }, settings.timeoutMs);
+    let response = await search();
+    if (response.status === 401) response = await search(true);
+    if (!response.ok) {
+      throw new ProcessApiError("process", `Catalog API returned HTTP ${response.status}: ${await describeFailure(response)}`, response.status);
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (error) {
+      throw new ProcessApiError("process", "The Catalog API returned invalid JSON.", undefined, { cause: error });
+    }
+    const parsed = z.object({ features: z.array(z.unknown()) }).safeParse(body);
+    if (!parsed.success) throw new ProcessApiError("process", "The Catalog API returned an invalid response.");
+    return parsed.data.features.length > 0;
+  }
+
+  return { getToken, process, hasBackgroundData };
 }
 
 export type ProcessClient = ReturnType<typeof createProcessClient>;
