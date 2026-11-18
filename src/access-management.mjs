@@ -30,6 +30,7 @@ export function initAccessManagement({ api, t, labelFor, escapeHtml: esc, canRea
         <div class="access-filters"><label><span data-i18n="prod.access.search"></span><input id="user-search" type="search"></label>
           <label><span data-i18n="prod.common.status"></span><select id="user-filter"><option value="" data-i18n="prod.access.all"></option>
           <option value="active" data-i18n="prod.access.active"></option><option value="inactive" data-i18n="prod.access.inactive"></option></select></label></div>
+        <p data-i18n="prod.registration.visibility"></p>
         <p id="users-status" role="status" aria-live="polite"></p>
         <div class="table-wrap"><table><thead><tr><th data-i18n="prod.profile.name"></th><th data-i18n="prod.profile.email"></th>
           <th data-i18n="prod.access.assignedRoles"></th><th data-i18n="prod.common.status"></th><th data-i18n="prod.access.actions"></th></tr></thead>

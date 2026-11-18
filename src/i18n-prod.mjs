@@ -33,6 +33,7 @@ const rows = [
   ["prod.access.denied", "Für diesen Bereich fehlt die Berechtigung.", "You do not have permission for this section.", "ለዚህ ክፍል ፈቃድ የለዎትም።"],
   ["prod.registration.eyebrow", "KONTOFREIGABE", "ACCOUNT APPROVAL", "የመለያ ማጽደቅ"],
   ["prod.registration.title", "Registrierungen", "Registrations", "ምዝገባዎች"],
+  ["prod.registration.visibility", "Die Liste ist nur für Systemadministratoren sichtbar. Eine erfolgreiche neutrale Bestätigung garantiert keinen Listeneintrag: Für bereits vorhandene Konten wird keine zweite Anfrage angelegt. Lieferanten-Einladungen finden Sie unter „Lieferanten“.", "Only system administrators can see the list. A neutral success confirmation does not guarantee a list entry: no duplicate request is created for an existing account. Supplier invitations are under “Suppliers”.", "ዝርዝሩን ማየት የሚችሉት የስርዓት አስተዳዳሪዎች ብቻ ናቸው። ገለልተኛ የስኬት ማረጋገጫ በዝርዝሩ ውስጥ መግባቱን አያረጋግጥም፤ ለነባር መለያ ሁለተኛ ጥያቄ አይፈጠርም። የአቅራቢ ግብዣዎችን በ«አቅራቢዎች» ውስጥ ያገኛሉ።"],
   ["prod.registration.reload", "Aktualisieren", "Refresh", "አድስ"],
   ["prod.registration.search", "Registrierungen suchen", "Search registrations", "ምዝገባዎችን ፈልግ"],
   ["prod.registration.all", "Alle Registrierungen", "All registrations", "ሁሉም ምዝገባዎች"],
@@ -127,6 +128,8 @@ const rows = [
   ["prod.common.type", "Typ", "Type", "ዓይነት"],
   ["prod.common.id", "ID", "ID", "መለያ"],
   ["prod.common.dialogClose", "Dialog schließen", "Close dialog", "መስኮቱን ዝጋ"],
+  ["prod.copy.show", "Erklärenden Text anzeigen", "Show explanatory text", "ማብራሪያውን አሳይ"],
+  ["prod.copy.hide", "Erklärenden Text ausblenden", "Hide explanatory text", "ማብራሪያውን ደብቅ"],
 
   ["prod.overview.eyebrow", "ORGANISATION", "ORGANIZATION", "ድርጅት"],
   ["prod.overview.updated", "Stand", "As of", "እስከ"],

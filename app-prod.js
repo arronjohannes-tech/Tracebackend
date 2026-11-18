@@ -16,6 +16,7 @@ import { initAccessManagement } from "./src/access-management.mjs?v=1";
 import { initRegistrationManagement } from "./src/registration-management.mjs?v=1";
 import { initPasswordRecovery } from "./src/password-recovery.mjs?v=2";
 import { initGooglePlotMap } from "./src/google-plot-map.mjs?v=2";
+import { enhanceFrontpage } from "./src/frontpage-ui.mjs?v=1";
 import {
   DEVICE_ACTIVITY_THROTTLE_MS,
   DEVICE_SESSION_ABSOLUTE_MS,
@@ -115,6 +116,7 @@ const t = (key, values) => {
   const text = translate(state.language, key);
   return values ? format(text, values) : text;
 };
+enhanceFrontpage(document, t);
 const labelFor = (prefix, value) => {
   const key = `${prefix}.${value}`;
   const text = translate(state.language, key);
