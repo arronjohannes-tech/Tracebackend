@@ -62,8 +62,13 @@ import {
 } from "../i18n";
 import type { AppController } from "../controllers/useAppController";
 import OfflineMapSetup from "./OfflineMapSetup";
+import OrganicMapPreview from "./OrganicMapPreview";
 import PlotMapPreview from "./PlotMapPreview";
 import { normalizePhone, phoneCountries, searchPhoneCountries } from "../onboarding";
+
+const appName = Platform.OS === "android" && process.env.EXPO_PUBLIC_ASTERTRACE_ANDROID_TEST === "1"
+  ? "Astertrace"
+  : "Tracecomplaince";
 
 const palette = {
   ink: "#14251D",
@@ -1003,13 +1008,17 @@ function PlotsScreen({
             ))}
           </View>
         ) : null}
-        <PlotMapPreview
-          offlineMapUri={offlineMapUri}
-          positions={polygon?.coordinates[0].slice(0, -1) ?? []}
-          trackPoints={trackPoints}
-          polygon={polygon}
-          unavailableLabel={t.plots.mapUnavailable}
-        />
+        {Platform.OS === "android" ? (
+          <OrganicMapPreview polygon={polygon} trackPoints={trackPoints} t={t} />
+        ) : (
+          <PlotMapPreview
+            offlineMapUri={offlineMapUri}
+            positions={polygon?.coordinates[0].slice(0, -1) ?? []}
+            trackPoints={trackPoints}
+            polygon={polygon}
+            unavailableLabel={t.plots.mapUnavailable}
+          />
+        )}
         <Button label={t.plots.importGeoJson} icon="document-attach" onPress={() => void importGeoJson()} secondary />
         <Field
           label={t.plots.polygonJson}
@@ -1067,13 +1076,17 @@ function PlotsScreen({
               })()}
             </View>
           ) : null}
-          <PlotMapPreview
-            offlineMapUri={offlineMapUri}
-            positions={plot.polygon.coordinates[0].slice(0, -1)}
-            trackPoints={plot.trackPoints ?? []}
-            polygon={plot.polygon}
-            unavailableLabel={t.plots.mapUnavailable}
-          />
+          {Platform.OS === "android" ? (
+            <OrganicMapPreview polygon={plot.polygon} trackPoints={plot.trackPoints ?? []} t={t} />
+          ) : (
+            <PlotMapPreview
+              offlineMapUri={offlineMapUri}
+              positions={plot.polygon.coordinates[0].slice(0, -1)}
+              trackPoints={plot.trackPoints ?? []}
+              polygon={plot.polygon}
+              unavailableLabel={t.plots.mapUnavailable}
+            />
+          )}
           <Text style={styles.mono}>{JSON.stringify(plot.polygon)}</Text>
         </View>
       ))}
@@ -1802,7 +1815,7 @@ function LoginScreen({ controller }: { controller: AppController }) {
     <AuthLayout controller={controller}>
         <View style={styles.loginBrand}>
           <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
-          <Text style={styles.loginTitle}>Tracecomplaince</Text>
+          <Text style={styles.loginTitle}>{appName}</Text>
           <Text style={styles.headerSub}>{t.brandSubtitle}</Text>
         </View>
         <View style={styles.card}>
@@ -2035,7 +2048,7 @@ export function AppView({ controller }: { controller: AppController }) {
       <View style={[styles.header, compactLayout && styles.headerCompact]}>
         <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
         <View style={[styles.flex, compactLayout && styles.headerBrandCompact]}>
-          <Text style={styles.brand} numberOfLines={1}>Tracecomplaince</Text>
+          <Text style={styles.brand} numberOfLines={1}>{appName}</Text>
           <Text style={styles.headerSub} numberOfLines={1}>{t.brandSubtitle}</Text>
         </View>
         <View style={[styles.headerActions, compactLayout && styles.headerActionsCompact]}>

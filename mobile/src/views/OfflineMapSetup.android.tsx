@@ -141,6 +141,8 @@ export default function OfflineMapSetup({
     ]);
   }
 
+  if (!ready && !error && !downloading) return null;
+
   return (
     <View style={styles.container}>
       <Text style={styles.description}>{ready ? t.plots.offlineMapReady : t.plots.offlineMapInfo}</Text>

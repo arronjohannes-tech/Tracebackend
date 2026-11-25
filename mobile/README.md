@@ -51,16 +51,22 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 
 Es ist keine Produktions-URL fest eingebaut. Für ein physisches Gerät muss die URL vom Gerät erreichbar sein; `localhost` verweist dort auf das Gerät selbst.
 OCR benötigt einen nativen Android-/iOS-Build (Expo Go unterstützt das native Modul nicht).
-Android verwendet MapLibre ohne Google-Maps-Schlüssel. Die optionale Offline-Karte für
-Äthiopien kann in der Plotansicht einmalig heruntergeladen und später wieder entfernt
-werden. Der Download umfasst das ganze Land (derzeit ca. 350 MB), benötigt Internet
-und Speicherplatz und verwendet experimentelle Shortbread-Vektorkacheln von
-[Geofabrik](https://download.geofabrik.de/africa/ethiopia/); die Kartendaten stammen
-von [OpenStreetMap](https://www.openstreetmap.org/copyright). Die einfache Darstellung
-zeigt keine Orts- oder Straßennamen, ist keine Satellitenaufnahme und enthält nicht
-notwendigerweise alle Grundstücksdetails.
-GPS-Punkte und Plots können auch ohne heruntergeladene Karte erfasst werden.
+Android kann Grenzen und GPS-Aufzeichnungen als GeoJSON-Momentaufnahme über das
+Teilen-Menü an die kostenlose App [Organic Maps](https://organicmaps.app/) übergeben.
+Falls sie fehlt, bietet die App ihre Installation an. Für die Offline-Nutzung muss
+die benötigte Region zuvor in Organic Maps heruntergeladen werden. Grenzen und
+Aussparungen werden als Linien, nicht als gefüllte Flächen dargestellt; die Anzeige
+wird während einer laufenden Grenzbegehung nicht automatisch aktualisiert. Der Nutzer
+wählt das Ziel der Freigabe und kann die Karte erneut öffnen, um neue Punkte zu sehen.
+Früher in Trace heruntergeladene Offline-Karten können weiterhin entfernt werden.
+GPS-Punkte und Plots können auch ohne Karten-App erfasst werden.
 Die Web-Version lädt keine externen Kartenkacheln.
+
+Für eine separat installierbare Android-Testversion mit dem Namen Astertrace:
+`eas build --platform android --profile astertrace`. Sie verwendet eine eigene
+Paketkennung und eigene lokale Daten, verbindet sich aber mit dem im Profil
+konfigurierten Backend. Aktivierungslinks können bei parallel installierten
+Versionen an die andere App weitergeleitet werden.
 
 Offline gespeicherte Plots bleiben in der lokalen Outbox bis zur Synchronisierung.
 Eine Erstanmeldung und die Erneuerung einer abgelaufenen Sitzung benötigen weiterhin

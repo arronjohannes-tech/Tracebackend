@@ -24,6 +24,16 @@
         "EXPO_PUBLIC_API_URL": "https://tracebackend-backend-meloy.vercel.app"
       }
     },
+    "astertrace": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_ASTERTRACE_ANDROID_TEST": "1",
+        "EXPO_PUBLIC_API_URL": "https://tracebackend-backend-meloy.vercel.app"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "android": {

@@ -161,6 +161,13 @@ export type Translation = {
     noDocument: string;
     linkedDocument: string;
     mapUnavailable: string;
+    organicMapOpen: string;
+    organicMapDetail: string;
+    organicMapChoose: string;
+    organicMapInstallTitle: string;
+    organicMapInstallDetail: string;
+    organicMapInstallAction: string;
+    organicMapError: string;
     offlineMapInfo: string;
     offlineMapReady: string;
     offlineMapDownload: string;
@@ -298,6 +305,13 @@ export const translations = {
       noDocument: "Kein Dokument verknüpft",
       linkedDocument: "Verknüpft",
       mapUnavailable: "Die Kartenansicht ist auf dieser Plattform nicht verfügbar.",
+      organicMapOpen: "In Organic Maps öffnen",
+      organicMapDetail: "Grenzen und GPS-Spur werden als Momentaufnahme geteilt. Wählen Sie Organic Maps; die Anzeige wird nicht live aktualisiert. Für Offline-Karten laden Sie die Region dort vorher herunter.",
+      organicMapChoose: "Organic Maps auswählen",
+      organicMapInstallTitle: "Organic Maps installieren",
+      organicMapInstallDetail: "Für die Kartenansicht wird die kostenlose App Organic Maps benötigt. Nach der Installation bitte erneut öffnen.",
+      organicMapInstallAction: "Zum Play Store",
+      organicMapError: "Die Karte konnte nicht geöffnet werden.",
       offlineMapInfo: "Offline-Karte Äthiopien: einmaliger Download von etwa 350 MB. GPS funktioniert auch ohne Karte.",
       offlineMapReady: "Die Offline-Karte Äthiopien ist auf diesem Gerät gespeichert.",
       offlineMapDownload: "Offline-Karte herunterladen",
@@ -421,6 +435,13 @@ export const translations = {
       noDocument: "No document linked",
       linkedDocument: "Linked",
       mapUnavailable: "Map preview is not available on this platform.",
+      organicMapOpen: "Open in Organic Maps",
+      organicMapDetail: "Boundaries and GPS tracks are shared as a snapshot. Select Organic Maps; the display does not update live. Download the region there first for offline maps.",
+      organicMapChoose: "Select Organic Maps",
+      organicMapInstallTitle: "Install Organic Maps",
+      organicMapInstallDetail: "The free Organic Maps app is required for the map view. Please try again after installing it.",
+      organicMapInstallAction: "Open Play Store",
+      organicMapError: "The map could not be opened.",
       offlineMapInfo: "Offline map of Ethiopia: a one-time download of about 350 MB. GPS also works without the map.",
       offlineMapReady: "The offline map of Ethiopia is saved on this device.",
       offlineMapDownload: "Download offline map",
@@ -544,6 +565,13 @@ export const translations = {
       noDocument: "ምንም ሰነድ አልተያያዘም",
       linkedDocument: "ተያይዟል",
       mapUnavailable: "በዚህ መድረክ የካርታ ቅድመ እይታ አይገኝም።",
+      organicMapOpen: "በOrganic Maps ክፈት",
+      organicMapDetail: "ድንበሮችና የGPS መንገድ እንደ ቅጽበታዊ መረጃ ይጋራሉ። Organic Maps ይምረጡ፤ ማሳያው በቀጥታ አይዘመንም። ኦፍላይን ለመጠቀም ክልሉን አስቀድመው ያውርዱ።",
+      organicMapChoose: "Organic Maps ይምረጡ",
+      organicMapInstallTitle: "Organic Maps ይጫኑ",
+      organicMapInstallDetail: "ካርታውን ለማየት ነፃው Organic Maps መተግበሪያ ያስፈልጋል። ከጫኑ በኋላ እንደገና ይሞክሩ።",
+      organicMapInstallAction: "Play Store ክፈት",
+      organicMapError: "ካርታውን መክፈት አልተቻለም።",
       offlineMapInfo: "የኢትዮጵያ ኦፍላይን ካርታ፦ አንድ ጊዜ 350 MB ያህል ያውርዱ። GPS ያለ ካርታም ይሰራል።",
       offlineMapReady: "የኢትዮጵያ ኦፍላይን ካርታ በዚህ መሳሪያ ተቀምጧል።",
       offlineMapDownload: "ኦፍላይን ካርታ አውርድ",
@@ -667,6 +695,13 @@ export const translations = {
       noDocument: "ዝተኣሳሰረ ሰነድ የለን",
       linkedDocument: "ተኣሳሲሩ",
       mapUnavailable: "ኣብዚ መድረኽ ቅድመ ርኢቶ ካርታ የለን።",
+      organicMapOpen: "ብOrganic Maps ክፈት",
+      organicMapDetail: "ዶባትን ናይ GPS መስመርን ከም ናይ ሓደ ግዜ መረዳእታ ይካፈሉ። Organic Maps ምረጽ፤ ብቐጥታ ኣይሕደስን። ኦፍላይን ንምጥቃም ነቲ ከባቢ ቀዲምካ ኣውርድ።",
+      organicMapChoose: "Organic Maps ምረጽ",
+      organicMapInstallTitle: "Organic Maps ጽዓን",
+      organicMapInstallDetail: "ንካርታ እቲ ነጻ Organic Maps መተግበሪ የድሊ። ምስ ጸዓንካዮ እንደገና ፈትን።",
+      organicMapInstallAction: "Play Store ክፈት",
+      organicMapError: "ካርታ ክኽፈት ኣይከኣለን።",
       offlineMapInfo: "ናይ ኢትዮጵያ ኦፍላይን ካርታ፦ ሓደ ግዜ ኣስታት 350 MB ኣውርድ። GPS ብዘይ ካርታውን ይሰርሕ።",
       offlineMapReady: "ናይ ኢትዮጵያ ኦፍላይን ካርታ ኣብዚ መሳርሒ ተቐሚጡ ኣሎ።",
       offlineMapDownload: "ኦፍላይን ካርታ ኣውርድ",
@@ -786,6 +821,13 @@ export const translations = {
       trackCount: "Tuqaalee GPS galmaa'an", selectDocument: "Sanada lafaa akka ragaatti walqabsiisi",
       noDocument: "Sanadni hin walqabanne", linkedDocument: "Walqabate",
       mapUnavailable: "Meeshaa kana irratti kaartaan hin argamu.",
+      organicMapOpen: "Organic Maps keessatti bani",
+      organicMapDetail: "Daangaa fi karaan GPS yeroo ammaatti qoodamu. Organic Maps filadhu; agarsiisni ofumaan hin haaromu. Kaartaa offline fayyadamuuf naannoo dursii buufadhu.",
+      organicMapChoose: "Organic Maps filadhu",
+      organicMapInstallTitle: "Organic Maps fe'i",
+      organicMapInstallDetail: "Kaartaa ilaaluuf appiin bilisaa Organic Maps barbaachisa. Erga fe'amee booda irra deebi'ii yaali.",
+      organicMapInstallAction: "Play Store bani",
+      organicMapError: "Kaartaa banuun hin danda'amne.",
       offlineMapInfo: "Kaartaa Itoophiyaa intarneeta malee: yeroo tokko qofa gara 350 MB buufadhu. GPS kaartaa malees ni hojjeta.",
       offlineMapReady: "Kaartaan Itoophiyaa meeshaa kana irratti kuufameera.",
       offlineMapDownload: "Kaartaa intarneeta malee buufadhu",
