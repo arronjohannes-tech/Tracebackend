@@ -22,6 +22,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   ApiError,
@@ -1419,6 +1420,7 @@ function OperationsScreen({
                     multiline
                   />
                   <Pressable
+                    style={styles.checkbox}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: document.localOcrReviewed === true }}
                     onPress={() => update((current) => ({
@@ -1893,6 +1895,9 @@ function UserMenu({
 }
 
 export function AppView({ controller }: { controller: AppController }) {
+  const { width, fontScale } = useWindowDimensions();
+  const compactLayout = width < 380 || fontScale >= 1.3;
+  const wideLayout = width >= 600;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
@@ -2012,31 +2017,33 @@ export function AppView({ controller }: { controller: AppController }) {
   return (
     <SafeAreaView style={styles.safeArea} onTouchStart={auth.recordActivity}>
       <StatusBar style="light" />
-      <View style={styles.header}>
+      <View style={[styles.header, compactLayout && styles.headerCompact]}>
         <View style={styles.logo}><Text style={styles.logoText}>SC</Text></View>
-        <View style={styles.flex}>
-          <Text style={styles.brand}>Tracecomplaince</Text>
-          <Text style={styles.headerSub}>{t.brandSubtitle}</Text>
+        <View style={[styles.flex, compactLayout && styles.headerBrandCompact]}>
+          <Text style={styles.brand} numberOfLines={1}>Tracecomplaince</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>{t.brandSubtitle}</Text>
         </View>
-        <View style={[styles.connectivity, !configured && styles.connectivityBlocked]}>
-          <View style={[styles.dot, !online && styles.dotOffline]} />
-          <Text style={styles.connectivityText}>
-            {!configured ? t.sync.notConfigured : online ? t.sync.online : t.sync.offline}
-          </Text>
-        </View>
-        <Pressable
-          style={styles.userButton}
-          onPress={() => setUserMenuOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={roleLabel ? `${t.userAccount}: ${roleLabel}` : t.userAccount}
-          accessibilityState={{ expanded: userMenuOpen }}
-        >
-          <View style={styles.userIconRow}>
-            <Ionicons name="person-circle-outline" size={30} color="#FFFFFF" />
-            <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
+        <View style={[styles.headerActions, compactLayout && styles.headerActionsCompact]}>
+          <View style={[styles.connectivity, !configured && styles.connectivityBlocked]}>
+            <View style={[styles.dot, !online && styles.dotOffline]} />
+            <Text style={styles.connectivityText}>
+              {!configured ? t.sync.notConfigured : online ? t.sync.online : t.sync.offline}
+            </Text>
           </View>
-          {roleLabel ? <Text style={styles.userRole}>{roleLabel}</Text> : null}
-        </Pressable>
+          <Pressable
+            style={styles.userButton}
+            onPress={() => setUserMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={roleLabel ? `${t.userAccount}: ${roleLabel}` : t.userAccount}
+            accessibilityState={{ expanded: userMenuOpen }}
+          >
+            <View style={styles.userIconRow}>
+              <Ionicons name="person-circle-outline" size={30} color="#FFFFFF" />
+              <Ionicons name="chevron-down" size={12} color="#FFFFFF" />
+            </View>
+            {roleLabel ? <Text style={styles.userRole}>{roleLabel}</Text> : null}
+          </Pressable>
+        </View>
       </View>
       <View style={styles.syncBar}>
         <Text style={[styles.syncText, syncError && styles.errorText]} numberOfLines={2}>
@@ -2050,7 +2057,14 @@ export function AppView({ controller }: { controller: AppController }) {
           disabled={syncing || !online || !configured}
         />
       </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          compactLayout && styles.contentCompact,
+          wideLayout && styles.contentWide,
+        ]}
+        keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={auth.recordActivity}>
         {storageError || geofenceError || auth.error ? (
           <View style={styles.blocking}>
@@ -2093,10 +2107,11 @@ export function AppView({ controller }: { controller: AppController }) {
             onPress={() => setActiveTab(tab)}
             style={styles.tab}
             accessibilityRole="tab"
+            accessibilityLabel={label}
             accessibilityState={{ selected: activeTab === tab }}
           >
             <Ionicons name={activeTab === tab ? icon : `${icon}-outline`} size={21} color={activeTab === tab ? palette.forest : palette.muted} />
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]} numberOfLines={1}>{label}</Text>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{label}</Text>
           </Pressable>
         ))}
       </View>
@@ -2112,68 +2127,74 @@ export function AppView({ controller }: { controller: AppController }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingTop: Platform.OS === "android" ? NativeStatusBar.currentHeight : 0, backgroundColor: palette.ink },
   loader: { flex: 1 },
-  login: { flex: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper },
-  authContent: { flexGrow: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper },
+  login: { flex: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper, width: "100%", maxWidth: 640, alignSelf: "center" },
+  authContent: { flexGrow: 1, justifyContent: "center", gap: 24, padding: 24, backgroundColor: palette.paper, width: "100%", maxWidth: 640, alignSelf: "center" },
   loginBrand: { alignItems: "center", gap: 8 },
   loginTitle: { color: palette.ink, fontSize: 28, fontWeight: "900" },
   header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 14, backgroundColor: palette.ink },
+  headerCompact: { minHeight: 0, flexWrap: "wrap", rowGap: 5, paddingVertical: 8 },
+  headerBrandCompact: { minWidth: 0 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 9 },
+  headerActionsCompact: { width: "100%", justifyContent: "space-between" },
   logo: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: palette.lime },
   logoText: { color: palette.ink, fontWeight: "900" },
   brand: { color: "#FFFFFF", fontSize: 17, fontWeight: "800" },
-  headerSub: { color: "#AFC0B7", fontSize: 9 },
+  headerSub: { color: "#AFC0B7", fontSize: 11 },
   flex: { flex: 1 },
-  connectivity: { maxWidth: 100, flexDirection: "row", alignItems: "center", gap: 5, padding: 7, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.1)" },
+  connectivity: { maxWidth: 160, flexDirection: "row", alignItems: "center", gap: 5, padding: 7, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.1)" },
   connectivityBlocked: { backgroundColor: "rgba(166,69,54,0.35)" },
-  connectivityText: { flexShrink: 1, color: "#FFFFFF", fontSize: 8, fontWeight: "700" },
+  connectivityText: { flexShrink: 1, color: "#FFFFFF", fontSize: 10, fontWeight: "700" },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: palette.lime },
   dotOffline: { backgroundColor: palette.amber },
   userButton: { minWidth: 48, maxWidth: 110, minHeight: 48, alignItems: "center", justifyContent: "center", gap: 2, padding: 4, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.1)" },
   userIconRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  userRole: { color: "#FFFFFF", fontSize: 9, textAlign: "center" },
+  userRole: { color: "#FFFFFF", fontSize: 10, textAlign: "center" },
   dropdownTrigger: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 13, borderWidth: 1, borderColor: palette.line, borderRadius: 9, backgroundColor: "#FFFFFF" },
-  dropdownOptions: { maxHeight: 240, marginTop: 4 },
+  dropdownOptions: { maxHeight: 260, marginTop: 4 },
   userMenuContent: { flexShrink: 1 },
   userMenuDialog: { maxHeight: "90%" },
   userIdentity: { alignItems: "center", gap: 6, marginBottom: 12 },
   syncBar: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, backgroundColor: palette.softGreen },
-  syncText: { flex: 1, color: palette.forest, fontSize: 10, fontWeight: "700" },
+  syncText: { flex: 1, color: palette.forest, fontSize: 12, fontWeight: "700" },
   scroll: { flex: 1, backgroundColor: palette.paper },
-  content: { gap: 13, padding: 15, paddingBottom: 28 },
+  content: { gap: 13, padding: 16, paddingBottom: 28 },
+  contentCompact: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
+  contentWide: { width: "100%", maxWidth: 1000, alignSelf: "center" },
   section: { gap: 8, marginBottom: 3 },
-  heading: { color: palette.ink, fontFamily: Platform.select({ ios: "Georgia", android: "serif" }), fontSize: 25, fontWeight: "700" },
-  description: { color: palette.muted, fontSize: 11, lineHeight: 17 },
+  heading: { color: palette.ink, fontFamily: Platform.select({ ios: "Georgia", android: "serif" }), fontSize: 26, fontWeight: "700" },
+  description: { color: palette.muted, fontSize: 13, lineHeight: 19 },
   hero: { gap: 12, padding: 21, borderRadius: 18, backgroundColor: palette.dark },
   heroTitle: { color: "#FFFFFF", fontSize: 25, fontWeight: "800" },
-  heroBody: { color: "#D7E1DB", fontSize: 12, lineHeight: 19 },
-  metrics: { flexDirection: "row", gap: 8 },
-  metric: { flex: 1, padding: 10, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.09)" },
+  heroBody: { color: "#D7E1DB", fontSize: 14, lineHeight: 21 },
+  metrics: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  metric: { minWidth: 112, flex: 1, padding: 10, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.09)" },
   metricValue: { color: palette.lime, fontSize: 21, fontWeight: "900" },
-  metricLabel: { color: "#FFFFFF", fontSize: 9 },
+  metricLabel: { color: "#FFFFFF", fontSize: 11 },
   card: { gap: 10, padding: 16, borderWidth: 1, borderColor: palette.line, borderRadius: 14, backgroundColor: palette.panel },
   cardSelected: { borderColor: palette.forest, borderWidth: 2, backgroundColor: palette.softGreen },
   cardTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
-  itemTitle: { color: palette.ink, fontSize: 12, fontWeight: "700" },
-  caption: { color: palette.muted, fontSize: 9, lineHeight: 14 },
+  itemTitle: { color: palette.ink, fontSize: 13, fontWeight: "700" },
+  caption: { color: palette.muted, fontSize: 11, lineHeight: 17 },
   documentRow: { gap: 8 },
-  fieldLabel: { marginTop: 5, marginBottom: 5, color: palette.ink, fontSize: 10, fontWeight: "700" },
-  documentChoice: { padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 8, backgroundColor: "#FFFFFF" },
+  fieldLabel: { marginTop: 5, marginBottom: 5, color: palette.ink, fontSize: 12, fontWeight: "700" },
+  documentChoice: { minHeight: 48, justifyContent: "center", padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 8, backgroundColor: "#FFFFFF" },
   documentChoiceSelected: { borderColor: palette.forest, backgroundColor: palette.softGreen },
   fixBox: { gap: 4, padding: 10, borderWidth: 1, borderColor: palette.line, borderRadius: 9, backgroundColor: "#FFFFFF" },
   fixGood: { borderColor: palette.forest, backgroundColor: palette.softGreen },
   fixBad: { borderColor: palette.red, backgroundColor: palette.softRed },
-  fixText: { color: palette.ink, fontSize: 10, fontWeight: "700", lineHeight: 15 },
-  label: { marginBottom: 5, color: palette.ink, fontSize: 10, fontWeight: "700" },
-  input: { minHeight: 45, paddingHorizontal: 12, borderWidth: 1, borderColor: palette.line, borderRadius: 9, color: palette.ink, backgroundColor: "#FFFFFF", fontSize: 12 },
+  fixText: { color: palette.ink, fontSize: 12, fontWeight: "700", lineHeight: 17 },
+  label: { marginBottom: 5, color: palette.ink, fontSize: 12, fontWeight: "700" },
+  input: { minHeight: 48, paddingHorizontal: 12, borderWidth: 1, borderColor: palette.line, borderRadius: 9, color: palette.ink, backgroundColor: "#FFFFFF", fontSize: 16 },
   inputInvalid: { borderColor: palette.red, borderWidth: 2, backgroundColor: palette.softRed },
   textArea: { minHeight: 130, paddingTop: 10, fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }), textAlignVertical: "top" },
-  button: { minHeight: 45, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 10, borderRadius: 9, backgroundColor: palette.forest },
+  button: { minWidth: 124, minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 10, borderRadius: 9, backgroundColor: palette.forest },
   buttonSecondary: { borderWidth: 1, borderColor: palette.forest, backgroundColor: "#FFFFFF" },
   buttonDisabled: { opacity: 0.45 },
-  buttonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", textAlign: "center" },
+  buttonText: { flexShrink: 1, color: "#FFFFFF", fontSize: 12, fontWeight: "800", textAlign: "center" },
   buttonTextSecondary: { color: palette.forest },
   iconButton: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -2181,10 +2202,10 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     backgroundColor: "#FFFFFF",
   },
-  buttonRow: { flexDirection: "row", gap: 8 },
+  buttonRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   iconButtonRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rowBetween: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 9 },
-  listRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 9, borderTopWidth: 1, borderTopColor: palette.line },
+  rowBetween: { minHeight: 48, flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 9 },
+  listRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingTop: 9, borderTopWidth: 1, borderTopColor: palette.line },
   listItemCard: {
     gap: 10,
     padding: 12,
@@ -2193,25 +2214,26 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#FFFFFF",
   },
-  empty: { padding: 18, color: palette.muted, textAlign: "center" },
+  empty: { padding: 18, color: palette.muted, fontSize: 12, textAlign: "center" },
   badge: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: palette.softAmber },
   badgeGood: { backgroundColor: palette.softGreen },
   badgeBad: { backgroundColor: palette.softRed },
-  badgeText: { color: "#83530C", fontSize: 8, fontWeight: "800" },
+  badgeText: { color: "#83530C", fontSize: 10, fontWeight: "800" },
   goodText: { color: palette.forest },
   badText: { color: palette.red },
   blocking: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 14, borderWidth: 1, borderColor: palette.red, borderRadius: 12, backgroundColor: palette.softRed },
-  blockingTitle: { color: palette.red, fontSize: 12, fontWeight: "900" },
+  blockingTitle: { color: palette.red, fontSize: 14, fontWeight: "900" },
   conflictCard: { gap: 8, padding: 13, borderWidth: 1, borderColor: palette.red, borderRadius: 10, backgroundColor: palette.softRed },
-  errorText: { color: palette.red, fontSize: 10, fontWeight: "700" },
-  mono: { color: palette.muted, fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }), fontSize: 8, lineHeight: 12 },
-  tabs: { minHeight: 70, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: palette.panel },
-  tab: { flex: 1, alignItems: "center", gap: 3, paddingHorizontal: 2 },
-  tabText: { color: palette.muted, fontSize: 7, fontWeight: "600" },
+  errorText: { color: palette.red, fontSize: 12, fontWeight: "700" },
+  mono: { color: palette.muted, fontFamily: Platform.select({ ios: "Menlo", android: "monospace" }), fontSize: 10, lineHeight: 16 },
+  tabs: { minHeight: 72, flexDirection: "row", alignItems: "center", paddingHorizontal: 4, paddingBottom: Platform.OS === "android" ? 6 : 8, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: palette.panel },
+  tab: { minHeight: 56, flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 2, paddingVertical: 6 },
+  tabText: { color: palette.muted, fontSize: 10, fontWeight: "600", textAlign: "center" },
   tabTextActive: { color: palette.forest, fontWeight: "900" },
   modal: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(10,25,18,0.65)" },
   dialog: { gap: 9, padding: 19, borderRadius: 16, backgroundColor: palette.panel },
   language: { minHeight: 48, justifyContent: "center", paddingHorizontal: 13, borderWidth: 1, borderColor: palette.line, borderRadius: 9 },
+  checkbox: { minHeight: 48, justifyContent: "center", paddingVertical: 6 },
   languageActive: { borderColor: palette.forest, backgroundColor: palette.forest },
   languageText: { color: "#FFFFFF" },
 });

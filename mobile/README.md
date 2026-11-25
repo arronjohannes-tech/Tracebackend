@@ -188,6 +188,28 @@ Der Android-Signaturschlüssel (Keystore) liegt bei EAS; Builds laufen mit `--no
 Veröffentlichung im Play Store wird zusätzlich ein Google-Play-Konto mit Service-Account-Schlüssel
 benötigt (`eas submit`); die erste Version muss im Play Console einmal manuell angelegt werden.
 Lokale Prüfung des Android-Bundles: `npm run export:android`.
+
+Die Preview-APK verwendet aktuell dieselbe produktive Backend-URL wie der Produktionsbuild.
+Für externe Tests daher Testkonten und Testdaten verwenden.
+
+### Responsive Android-Tests
+
+Vor der Verteilung der Preview-APK auf mindestens einem kleinen Telefon (ca. 320–360 dp),
+einem Standardtelefon (ca. 390 dp) und einem Tablet (ab 600 dp) prüfen. Zusätzlich Hoch- und
+Querformat, eine erhöhte Android-Schriftgröße sowie längere Beschriftungen in DE, EN, AM, TI und OM
+testen. Formulare müssen bei geöffneter Tastatur scrollbar bleiben; Tabs, Dialoge und Aktionen
+müssen ohne abgeschnittene Beschriftungen erreichbar und bedienbar sein.
+
+```powershell
+# Android-Bundle lokal auf Fehler prüfen
+npm run export:android
+
+# Installierbare Preview-APK über EAS erstellen
+npx eas build --platform android --profile preview
+```
+
+Die APK kann nach Abschluss des EAS-Builds über dessen interne Verteilungsseite an Testpersonen
+weitergegeben werden.
 ## Legacy-Quarantäne
 
 Ungescopte Daten aus `sctracker.mobileState.v3`, `sctracker.mobileState.v2` und
