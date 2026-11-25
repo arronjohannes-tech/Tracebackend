@@ -161,6 +161,13 @@ export type Translation = {
     noDocument: string;
     linkedDocument: string;
     mapUnavailable: string;
+    offlineMapInfo: string;
+    offlineMapReady: string;
+    offlineMapDownload: string;
+    offlineMapDownloading: string;
+    offlineMapRemove: string;
+    offlineMapRemoveConfirm: string;
+    offlineMapError: string;
     tooFewTrackPoints: string;
   };
   operations: {
@@ -291,6 +298,13 @@ export const translations = {
       noDocument: "Kein Dokument verknüpft",
       linkedDocument: "Verknüpft",
       mapUnavailable: "Die Kartenansicht ist auf dieser Plattform nicht verfügbar.",
+      offlineMapInfo: "Offline-Karte Äthiopien: einmaliger Download von etwa 350 MB. GPS funktioniert auch ohne Karte.",
+      offlineMapReady: "Die Offline-Karte Äthiopien ist auf diesem Gerät gespeichert.",
+      offlineMapDownload: "Offline-Karte herunterladen",
+      offlineMapDownloading: "Karte wird heruntergeladen",
+      offlineMapRemove: "Offline-Karte entfernen",
+      offlineMapRemoveConfirm: "Die gespeicherte Karte entfernen? GPS und Plot-Entwürfe bleiben erhalten.",
+      offlineMapError: "Die Offline-Karte konnte nicht geladen werden",
       tooFewTrackPoints: "Für eine Grenze sind mindestens drei unterschiedliche GPS-Punkte erforderlich.",
     },
     operations: {
@@ -407,6 +421,13 @@ export const translations = {
       noDocument: "No document linked",
       linkedDocument: "Linked",
       mapUnavailable: "Map preview is not available on this platform.",
+      offlineMapInfo: "Offline map of Ethiopia: a one-time download of about 350 MB. GPS also works without the map.",
+      offlineMapReady: "The offline map of Ethiopia is saved on this device.",
+      offlineMapDownload: "Download offline map",
+      offlineMapDownloading: "Downloading map",
+      offlineMapRemove: "Remove offline map",
+      offlineMapRemoveConfirm: "Remove the saved map? GPS and plot drafts will be kept.",
+      offlineMapError: "The offline map could not be loaded",
       tooFewTrackPoints: "At least three distinct GPS points are required for a boundary.",
     },
     operations: {
@@ -523,6 +544,13 @@ export const translations = {
       noDocument: "ምንም ሰነድ አልተያያዘም",
       linkedDocument: "ተያይዟል",
       mapUnavailable: "በዚህ መድረክ የካርታ ቅድመ እይታ አይገኝም።",
+      offlineMapInfo: "የኢትዮጵያ ኦፍላይን ካርታ፦ አንድ ጊዜ 350 MB ያህል ያውርዱ። GPS ያለ ካርታም ይሰራል።",
+      offlineMapReady: "የኢትዮጵያ ኦፍላይን ካርታ በዚህ መሳሪያ ተቀምጧል።",
+      offlineMapDownload: "ኦፍላይን ካርታ አውርድ",
+      offlineMapDownloading: "ካርታ በመውረድ ላይ",
+      offlineMapRemove: "ኦፍላይን ካርታ አስወግድ",
+      offlineMapRemoveConfirm: "የተቀመጠውን ካርታ ማስወገድ ይፈልጋሉ? GPS እና የመሬት ረቂቆች ይቀራሉ።",
+      offlineMapError: "ኦፍላይን ካርታውን መጫን አልተቻለም",
       tooFewTrackPoints: "ለድንበር ቢያንስ ሶስት የተለያዩ GPS ነጥቦች ያስፈልጋሉ።",
     },
     operations: {
@@ -639,6 +667,13 @@ export const translations = {
       noDocument: "ዝተኣሳሰረ ሰነድ የለን",
       linkedDocument: "ተኣሳሲሩ",
       mapUnavailable: "ኣብዚ መድረኽ ቅድመ ርኢቶ ካርታ የለን።",
+      offlineMapInfo: "ናይ ኢትዮጵያ ኦፍላይን ካርታ፦ ሓደ ግዜ ኣስታት 350 MB ኣውርድ። GPS ብዘይ ካርታውን ይሰርሕ።",
+      offlineMapReady: "ናይ ኢትዮጵያ ኦፍላይን ካርታ ኣብዚ መሳርሒ ተቐሚጡ ኣሎ።",
+      offlineMapDownload: "ኦፍላይን ካርታ ኣውርድ",
+      offlineMapDownloading: "ካርታ ይወርድ ኣሎ",
+      offlineMapRemove: "ኦፍላይን ካርታ ኣወግድ",
+      offlineMapRemoveConfirm: "ዝተቐመጠ ካርታ ክወግድ? GPSን ናይ መሬት ንድፍታትን ይተርፉ።",
+      offlineMapError: "ኦፍላይን ካርታ ክጽዓን ኣይከኣለን",
       tooFewTrackPoints: "ንዶብ እንተወሓደ ሰለስተ ዝተፈላለዩ GPS ነጥብታት የድልዩ።",
     },
     operations: {
@@ -751,6 +786,13 @@ export const translations = {
       trackCount: "Tuqaalee GPS galmaa'an", selectDocument: "Sanada lafaa akka ragaatti walqabsiisi",
       noDocument: "Sanadni hin walqabanne", linkedDocument: "Walqabate",
       mapUnavailable: "Meeshaa kana irratti kaartaan hin argamu.",
+      offlineMapInfo: "Kaartaa Itoophiyaa intarneeta malee: yeroo tokko qofa gara 350 MB buufadhu. GPS kaartaa malees ni hojjeta.",
+      offlineMapReady: "Kaartaan Itoophiyaa meeshaa kana irratti kuufameera.",
+      offlineMapDownload: "Kaartaa intarneeta malee buufadhu",
+      offlineMapDownloading: "Kaartaan buufamaa jira",
+      offlineMapRemove: "Kaartaa kuufame haqi",
+      offlineMapRemoveConfirm: "Kaartaa kuufame haqxuu? GPS fi wixineewwan lafaa ni turu.",
+      offlineMapError: "Kaartaa kuufame fe'uun hin danda'amne",
       tooFewTrackPoints: "Daangaaf tuqaalee GPS adda addaa yoo xiqqaate sadii barbaachisu.",
     },
     operations: {

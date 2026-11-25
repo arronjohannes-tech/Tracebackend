@@ -11,6 +11,7 @@ export default function PlotMapPreview({
   trackPoints: GpsTrackPoint[];
   polygon: GeoJsonPolygon | null;
   unavailableLabel?: string;
+  offlineMapUri?: string | null;
 }) {
   const outline = polygon?.coordinates[0].slice(0, -1) ?? positions;
   const allPositions = outline.length ? outline : trackPoints.map((point) => point.position);

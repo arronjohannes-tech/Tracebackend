@@ -8,7 +8,7 @@ Expo/React-Native-App für Android und iOS mit vollständiger Oberfläche in Deu
 - Nur lesende Sendungsliste im Partnerbereich und dauerhafte Sendungszuordnung zu Plots; Liste und Auswahl erscheinen nur bei vorhandenen Datenbank-Sendungen. Anlegen und Bearbeiten erfolgen nicht mobil. Beim Auswählen wird der Lieferant übernommen, die Sendungsdaten bleiben in der Plotansicht separat sichtbar
 - E-Mail-/Passwort-Login mit kurzlebigem Access Token, Refresh Token und Organisationsauswahl; Session verschlüsselt in Expo SecureStore
 - echte GeoJSON-Polygone durch mehrere GPS-Punkte sowie JSON-Import und -Bearbeitung, inklusive Bereichs-, Flächen- und Selbstüberschneidungsprüfung
-- GPS-Grenzbegehung mit zeitgestempelten Messpunkten, Genauigkeitswerten, Rücknahme, Polygonabschluss und nativer Kartenansicht; GPS-Aufzeichnungen sind Messdaten und werden nicht automatisch als rechtliche Grenze bestätigt
+- GPS-Grenzbegehung mit zeitgestempelten Messpunkten, Genauigkeitswerten, Rücknahme, Polygonabschluss und Kartenansicht; GPS-Aufzeichnungen sind Messdaten und werden nicht automatisch als rechtliche Grenze bestätigt
 - lokale OCR auf dem Gerät für fotografierte/ausgewählte Bilder; erkannter Text bleibt bearbeitbar und muss manuell geprüft werden. PDFs werden weiterhin nur als Beleg hochgeladen und nicht lokal per OCR verarbeitet
 - Grundstücksdokumente können nach abgeschlossenem Upload als Beleg mit einem Plot verknüpft werden; OCR-Angaben verändern niemals automatisch das GPS-Polygon
 - lokale Geofence-Vorprüfung mit sichtbarem Backend-/Prüfstatus; Serverentscheidungen bleiben autoritativ
@@ -50,7 +50,23 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 ```
 
 Es ist keine Produktions-URL fest eingebaut. Für ein physisches Gerät muss die URL vom Gerät erreichbar sein; `localhost` verweist dort auf das Gerät selbst.
-OCR benötigt einen nativen Android-/iOS-Build (Expo Go unterstützt das native Modul nicht). Für Karten unter Android muss `GOOGLE_MAPS_API_KEY` als Build-Umgebungsvariable gesetzt sein; ohne Schlüssel bleibt die Kartenkomponente auf nativen Plattformen von der Google-Kartenkonfiguration abhängig. Die Web-Version lädt keine externen Kartenkacheln.
+OCR benötigt einen nativen Android-/iOS-Build (Expo Go unterstützt das native Modul nicht).
+Android verwendet MapLibre ohne Google-Maps-Schlüssel. Die optionale Offline-Karte für
+Äthiopien kann in der Plotansicht einmalig heruntergeladen und später wieder entfernt
+werden. Der Download umfasst das ganze Land (derzeit ca. 350 MB), benötigt Internet
+und Speicherplatz und verwendet experimentelle Shortbread-Vektorkacheln von
+[Geofabrik](https://download.geofabrik.de/africa/ethiopia/); die Kartendaten stammen
+von [OpenStreetMap](https://www.openstreetmap.org/copyright). Die einfache Darstellung
+zeigt keine Orts- oder Straßennamen, ist keine Satellitenaufnahme und enthält nicht
+notwendigerweise alle Grundstücksdetails.
+GPS-Punkte und Plots können auch ohne heruntergeladene Karte erfasst werden.
+Die Web-Version lädt keine externen Kartenkacheln.
+
+Offline gespeicherte Plots bleiben in der lokalen Outbox bis zur Synchronisierung.
+Eine Erstanmeldung und die Erneuerung einer abgelaufenen Sitzung benötigen weiterhin
+Internet; Geofence-Prüfungen verwenden offline nur zuvor geladene Daten.
+Die Grenzbegehung läuft nur bei geöffneter App und erfordert aktivierte Standortdienste,
+Standortberechtigung und ausreichenden GPS-Empfang.
 
 Die App erwartet JSON-Antworten im Format `{ "data": ..., "meta": ... }` und Fehler als `{ "error": { "code": "...", "message": "...", "details": ... } }`.
 

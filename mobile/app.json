@@ -48,6 +48,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@maplibre/maplibre-react-native",
       "expo-font",
       "expo-sharing",
       "expo-secure-store",

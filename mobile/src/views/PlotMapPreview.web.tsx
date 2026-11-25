@@ -10,6 +10,7 @@ export default function PlotMapPreview({
   trackPoints: GpsTrackPoint[];
   polygon: GeoJsonPolygon | null;
   unavailableLabel: string;
+  offlineMapUri?: string | null;
 }) {
   if (!positions.length && !trackPoints.length && !polygon) return null;
   return <p>{unavailableLabel}</p>;

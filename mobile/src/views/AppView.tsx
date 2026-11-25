@@ -61,6 +61,7 @@ import {
   type Translation,
 } from "../i18n";
 import type { AppController } from "../controllers/useAppController";
+import OfflineMapSetup from "./OfflineMapSetup";
 import PlotMapPreview from "./PlotMapPreview";
 import { normalizePhone, phoneCountries, searchPhoneCountries } from "../onboarding";
 
@@ -569,6 +570,7 @@ function PlotsScreen({
   onShipmentsLoaded,
   selectedShipmentId,
   onSelectShipment,
+  offlineMapUri,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
@@ -580,6 +582,7 @@ function PlotsScreen({
   onShipmentsLoaded: (shipments: Shipment[]) => void;
   selectedShipmentId: string | null;
   onSelectShipment: (shipmentId: string | null) => void;
+  offlineMapUri: string | null;
 }) {
   const [producer, setProducer] = useState("");
   const [farm, setFarm] = useState("");
@@ -688,7 +691,10 @@ function PlotsScreen({
         Alert.alert(t.plots.permissionError);
         return null;
       }
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+        ...(Platform.OS === "android" ? { mayShowUserSettingsDialog: false } : {}),
+      });
       const position: Position = [location.coords.longitude, location.coords.latitude];
       if (!Number.isFinite(position[0]) || !Number.isFinite(position[1])) throw new Error("Invalid GPS fix.");
       const accuracy = location.coords.accuracy;
@@ -750,7 +756,12 @@ function PlotsScreen({
       setGeoJsonText("");
       setTracking(true);
       watchRef.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Highest, timeInterval: 3000, distanceInterval: 2 },
+        {
+          accuracy: Location.Accuracy.Highest,
+          timeInterval: 3000,
+          distanceInterval: 2,
+          ...(Platform.OS === "android" ? { mayShowUserSettingsDialog: false } : {}),
+        },
         appendTrackPoint,
         (error) => Alert.alert(t.plots.gpsError, error),
       );
@@ -993,6 +1004,7 @@ function PlotsScreen({
           </View>
         ) : null}
         <PlotMapPreview
+          offlineMapUri={offlineMapUri}
           positions={polygon?.coordinates[0].slice(0, -1) ?? []}
           trackPoints={trackPoints}
           polygon={polygon}
@@ -1056,6 +1068,7 @@ function PlotsScreen({
             </View>
           ) : null}
           <PlotMapPreview
+            offlineMapUri={offlineMapUri}
             positions={plot.polygon.coordinates[0].slice(0, -1)}
             trackPoints={plot.trackPoints ?? []}
             polygon={plot.polygon}
@@ -1902,6 +1915,7 @@ export function AppView({ controller }: { controller: AppController }) {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [remoteShipments, setRemoteShipments] = useState<Shipment[]>([]);
+  const [offlineMapUri, setOfflineMapUri] = useState<string | null>(null);
   const {
     auth,
     activeTab,
@@ -1962,6 +1976,7 @@ export function AppView({ controller }: { controller: AppController }) {
           onShipmentsLoaded={setRemoteShipments}
           selectedShipmentId={selectedShipmentId}
           onSelectShipment={setSelectedShipmentId}
+          offlineMapUri={offlineMapUri}
         />
       );
     }
@@ -1970,7 +1985,7 @@ export function AppView({ controller }: { controller: AppController }) {
     }
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
-  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments]);
+  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments, offlineMapUri]);
 
   if (auth.activation) {
     return <ActivationScreen key={auth.activation.token ?? "activation-result"} controller={controller} />;
@@ -2092,6 +2107,9 @@ export function AppView({ controller }: { controller: AppController }) {
             ))}
           </Section>
         ) : null}
+        <View style={{ display: activeTab === "plots" ? "flex" : "none" }}>
+          <OfflineMapSetup t={t} onMapChange={setOfflineMapUri} />
+        </View>
         {screen}
       </ScrollView>
       <View style={styles.tabs}>
