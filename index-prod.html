@@ -213,7 +213,7 @@
         <div class="section-intro">
           <div>
             <p class="eyebrow" data-i18n="plot.eyebrow">GEODATENPRÜFUNG</p>
-            <h2 data-i18n="plot.title">Kaffee-Parzellen</h2>
+            <h2 data-i18n="plot.title">PlotAudit</h2>
             <p data-i18n="plot.description">Versionierte Produktionsflächen mit deterministischen Qualitätsprüfungen.
             </p>
           </div>
@@ -248,6 +248,99 @@
           <p data-i18n="prod.map.privacy">Google Maps übermittelt beim Auswählen Kartendaten an Google.</p>
         </div>
         <article class="panel" id="satellite-panel" aria-live="polite" hidden></article>
+        <article class="panel table-panel" id="plot-audit-panel" hidden>
+          <div class="panel-header table-heading">
+            <div>
+              <p class="eyebrow" data-i18n="prod.audit.eyebrow">AUTOMATISCHE EVIDENZ</p>
+              <h3 data-i18n="prod.audit.title">Automatic evidence of deforestation</h3>
+            </div>
+            <button class="secondary-button" type="button" data-plot-audit-run>
+              <span data-i18n="prod.audit.run">Analyse starten</span>
+            </button>
+          </div>
+          <p class="muted table-note" data-i18n="prod.audit.notice">
+            Bewertet GPS-Daten plus Copernicus-Vergleich (31.12.2020 vs. aktuell) je Parzelle.
+          </p>
+          <div class="plot-audit-summary">
+            <div class="plot-audit-metric">
+              <span data-i18n="prod.audit.scanned">Geprüft</span>
+              <strong id="plot-audit-scanned">0</strong>
+            </div>
+            <div class="plot-audit-metric">
+              <span data-i18n="prod.audit.flagged">Auffällig</span>
+              <strong id="plot-audit-flagged">0</strong>
+            </div>
+            <div class="plot-audit-metric">
+              <span data-i18n="prod.audit.highConfidence">Hohe Evidenz</span>
+              <strong id="plot-audit-high">0</strong>
+            </div>
+          </div>
+          <p class="form-status" id="plot-audit-status" role="status"></p>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.plot.farm">Betrieb</th>
+                <th data-i18n="prod.audit.gps">GPS</th>
+                <th data-i18n="prod.audit.baseline">Baseline 2020</th>
+                <th data-i18n="prod.audit.current">Aktuell</th>
+                <th data-i18n="prod.audit.change">Vegetationsänderung</th>
+                <th data-i18n="prod.audit.confidence">Konfidenz</th>
+                <th data-i18n="prod.audit.result">Evidenz</th>
+              </tr>
+            </thead>
+            <tbody id="plot-audit-body"></tbody>
+          </table>
+        </article>
+        <article class="panel table-panel" id="polygon-audit-panel" hidden>
+          <div class="panel-header table-heading">
+            <div>
+              <p class="eyebrow" data-i18n="prod.polygonAudit.eyebrow">POLYGONAUDIT</p>
+              <h3 data-i18n="prod.polygonAudit.title">Polygon Upload & Analyse</h3>
+            </div>
+            <button class="secondary-button" type="button" data-polygon-audit-run-all>
+              <span data-i18n="prod.audit.run">Analyse starten</span>
+            </button>
+          </div>
+          <p class="muted table-note" data-i18n="prod.polygonAudit.notice">
+            GeoJSON hochladen oder Koordinaten einfügen und wie Plot-Daten analysieren.
+          </p>
+          <div class="polygon-audit-controls">
+            <input id="polygon-audit-upload" type="file" accept=".geojson,.json,application/geo+json,application/json" hidden>
+            <button class="secondary-button" type="button" data-polygon-upload-trigger data-i18n="prod.polygonAudit.upload">GeoJSON hochladen</button>
+            <textarea id="polygon-audit-manual" rows="4" data-i18n-placeholder="prod.polygonAudit.placeholder"
+              placeholder='[[8.1,49.1],[8.2,49.1],[8.2,49.2],[8.1,49.1]]'></textarea>
+            <button class="secondary-button" type="button" data-polygon-manual-add data-i18n="prod.polygonAudit.addManual">Koordinaten hinzufügen</button>
+          </div>
+          <p class="form-status" id="polygon-audit-status" role="status"></p>
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="prod.polygonAudit.name">Polygon</th>
+                <th data-i18n="prod.audit.gps">GPS</th>
+                <th data-i18n="prod.audit.change">Vegetationsänderung</th>
+                <th data-i18n="prod.audit.confidence">Konfidenz</th>
+                <th data-i18n="prod.audit.result">Evidenz</th>
+                <th data-i18n="prod.polygonAudit.actions">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody id="polygon-audit-body"></tbody>
+          </table>
+          <article class="map-card" id="polygon-audit-map-card" hidden>
+            <div class="map-placeholder" id="polygon-audit-map" role="group"
+              data-i18n-aria-label="prod.polygonAudit.mapLabel" aria-label="Polygon Vorschau"></div>
+            <div class="editor-panel">
+              <h4 id="polygon-audit-selected-name">—</h4>
+              <div class="editor-actions">
+                <button type="button" class="secondary-button" data-polygon-audit-edit data-i18n="prod.polygonAudit.edit">Polygon bearbeiten</button>
+              </div>
+              <div class="editor-actions" id="polygon-audit-edit-controls" hidden>
+                <button type="button" class="primary-button" data-polygon-geo-save data-i18n="prod.geo.save">Speichern</button>
+                <button type="button" class="secondary-button" data-polygon-geo-reset data-i18n="prod.geo.reset">Zurücksetzen</button>
+                <button type="button" class="secondary-button" data-polygon-geo-cancel data-i18n="prod.geo.cancel">Abbrechen</button>
+              </div>
+            </div>
+          </article>
+        </article>
         <div class="plot-pane" id="plots-all" role="tabpanel">
           <div class="map-layout" id="plots-map-view" hidden>
             <article class="map-card">

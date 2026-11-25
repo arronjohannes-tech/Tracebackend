@@ -2881,6 +2881,62 @@ html[data-layout="classic"] .live-empty {
   margin-bottom: 20px;
 }
 
+.plot-audit-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.plot-audit-metric {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.plot-audit-metric span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.plot-audit-metric strong {
+  font-size: 1.1rem;
+}
+
+.audit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: color-mix(in oklab, var(--surface-soft) 82%, var(--line));
+  color: var(--ink);
+}
+
+.audit-badge.high {
+  background: color-mix(in oklab, var(--amber) 25%, white);
+}
+
+.audit-badge.medium {
+  background: color-mix(in oklab, var(--forest-light) 70%, white);
+}
+
+.polygon-audit-controls {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+#polygon-audit-manual {
+  min-height: 100px;
+  resize: vertical;
+}
+
 .satellite-results {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));

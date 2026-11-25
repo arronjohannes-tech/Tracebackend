@@ -34,6 +34,8 @@ const CORRECTION_CATEGORIES = ["geometry", "area", "geofence", "duplicate", "evi
 const CHECK_GLYPH = { ok: "✓", fail: "!", pending: "·" };
 const WRITE_ROLES = ["system_admin", "org_admin", "reviewer"];
 const ADMIN_ROLES = ["system_admin", "org_admin"];
+const PLOT_AUDIT_IMAGE_SIZE = 1024;
+const PLOT_AUDIT_CONCURRENCY = 2;
 const STATUS_TONE = {
   planned: "neutral", in_transit: "warning", arrived: "success", cancelled: "danger",
   pending: "neutral", inside: "success", approved: "success", outside: "warning",
@@ -83,6 +85,20 @@ const state = {
   satelliteKeys: new Map(),
   satelliteErrors: new Map(),
   satelliteImages: new Map(),
+  plotAudit: {
+    running: false,
+    statusKey: "prod.audit.idle",
+    statusMessage: "",
+    results: new Map(),
+  },
+  polygonAudit: {
+    running: false,
+    statusKey: "prod.polygonAudit.idle",
+    statusMessage: "",
+    items: new Map(),
+    selectedId: null,
+    editing: null,
+  },
   editingShipmentId: null,
   deletingShipmentId: null,
 };
@@ -443,6 +459,16 @@ function showLogin() {
   state.satelliteErrors.clear();
   for (const url of state.satelliteImages.values()) URL.revokeObjectURL(url);
   state.satelliteImages.clear();
+  state.plotAudit.running = false;
+  state.plotAudit.statusKey = "prod.audit.idle";
+  state.plotAudit.statusMessage = "";
+  state.plotAudit.results.clear();
+  state.polygonAudit.running = false;
+  state.polygonAudit.statusKey = "prod.polygonAudit.idle";
+  state.polygonAudit.statusMessage = "";
+  state.polygonAudit.items.clear();
+  state.polygonAudit.selectedId = null;
+  state.polygonAudit.editing = null;
   state.user = null;
   state.organizationId = null;
   $$("dialog[open]").forEach((dialog) => dialog.close());
@@ -485,6 +511,10 @@ async function reloadData() {
   state.plotsFailed = plots === null || corrections === null;
   state.plots = plots ?? [];
   state.corrections = corrections ?? [];
+  state.plotAudit.running = false;
+  state.plotAudit.statusMessage = "";
+  state.plotAudit.statusKey = state.plots.length ? "prod.audit.idle" : "prod.audit.noPlots";
+  state.plotAudit.results.clear();
   await accessManagement.load();
 }
 
@@ -528,6 +558,16 @@ async function refreshWorkspace() {
       state.satelliteErrors.clear();
       for (const url of state.satelliteImages.values()) URL.revokeObjectURL(url);
       state.satelliteImages.clear();
+      state.plotAudit.running = false;
+      state.plotAudit.statusKey = "prod.audit.noAccess";
+      state.plotAudit.statusMessage = "";
+      state.plotAudit.results.clear();
+      state.polygonAudit.running = false;
+      state.polygonAudit.statusKey = "prod.audit.noAccess";
+      state.polygonAudit.statusMessage = "";
+      state.polygonAudit.items.clear();
+      state.polygonAudit.selectedId = null;
+      state.polygonAudit.editing = null;
     }
     $$("dialog[open]").forEach((dialog) => dialog.close());
     renderAll();
@@ -815,6 +855,533 @@ function renderComparison(container, plots, bbox) {
   }
 }
 
+/* ---------- plot audit ---------- */
+
+function decodeBackgroundImage(background) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        reject(new Error("No 2D context available."));
+        return;
+      }
+      context.drawImage(image, 0, 0);
+      resolve(context.getImageData(0, 0, canvas.width, canvas.height));
+    };
+    image.onerror = () => reject(new Error("Image could not be decoded."));
+    image.src = `data:${background.contentType};base64,${background.image}`;
+  });
+}
+
+function vegetationIndex(imageData) {
+  const { data } = imageData;
+  let sum = 0;
+  let samples = 0;
+  for (let index = 0; index < data.length; index += 16) {
+    const alpha = data[index + 3];
+    if (alpha < 16) continue;
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const brightness = (red + green + blue) / 3;
+    if (brightness < 18) continue;
+    sum += (green - (red + blue) / 2) / 255;
+    samples += 1;
+  }
+  return samples ? sum / samples : null;
+}
+
+function classifyPlotAudit(change, confidence) {
+  if (change === null || confidence === null) return "unavailable";
+  if (change >= 18 && confidence >= 65) return "high";
+  if (change >= 10 && confidence >= 55) return "medium";
+  return "low";
+}
+
+function plotAuditConfidence(plot, change) {
+  const gpsPoints = plot.trackPoints?.length ?? outerRing(plot)?.length ?? 0;
+  const gpsScore = Math.min(gpsPoints / 12, 1) * 35;
+  const areaScore = Number(plot.areaHa) > 0 ? 10 : 0;
+  const geofenceScore = plot.validation?.geofence?.state === "ok" ? 10 : 0;
+  const changeScore = change >= 20 ? 10 : change >= 10 ? 5 : 0;
+  return Math.min(99, Math.round(40 + gpsScore + areaScore + geofenceScore + changeScore));
+}
+
+async function analyzePlotEvidence(plot, user, organizationId) {
+  const bbox = plotBbox(plot);
+  if (!bbox || bboxTooLarge(bbox)) {
+    return { level: "unavailable", reason: "prod.audit.tooLarge", gpsPoints: plot.trackPoints?.length ?? 0 };
+  }
+  try {
+    const [baseline, current] = await Promise.all([
+      api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}&size=${PLOT_AUDIT_IMAGE_SIZE}&comparison=baseline`),
+      api(`/api/v1/plots/satellite-background?bbox=${bbox.join(",")}&size=${PLOT_AUDIT_IMAGE_SIZE}&comparison=current`),
+    ]);
+    if (state.user !== user || state.organizationId !== organizationId) return null;
+    if (!/^image\/(jpeg|png)$/.test(baseline?.contentType ?? "")
+      || !/^image\/(jpeg|png)$/.test(current?.contentType ?? "")) {
+      return { level: "unavailable", reason: "prod.audit.unavailable", gpsPoints: plot.trackPoints?.length ?? 0 };
+    }
+    const [baselineData, currentData] = await Promise.all([
+      decodeBackgroundImage(baseline),
+      decodeBackgroundImage(current),
+    ]);
+    if (state.user !== user || state.organizationId !== organizationId) return null;
+    const baselineIndex = vegetationIndex(baselineData);
+    const currentIndex = vegetationIndex(currentData);
+    if (baselineIndex === null || currentIndex === null) {
+      return {
+        level: "unavailable",
+        reason: "prod.audit.unavailable",
+        gpsPoints: plot.trackPoints?.length ?? 0,
+        baselineFrom: baseline.from,
+        baselineTo: baseline.to,
+        currentFrom: current.from,
+        currentTo: current.to,
+      };
+    }
+    const change = Math.max(0, (baselineIndex - currentIndex) * 180);
+    const confidence = plotAuditConfidence(plot, change);
+    return {
+      level: classifyPlotAudit(change, confidence),
+      change,
+      confidence,
+      gpsPoints: plot.trackPoints?.length ?? 0,
+      baselineFrom: baseline.from,
+      baselineTo: baseline.to,
+      currentFrom: current.from,
+      currentTo: current.to,
+    };
+  } catch (error) {
+    if (state.user !== user || state.organizationId !== organizationId) return null;
+    if (error.status === 401) {
+      showLogin();
+      return null;
+    }
+    const reason = error.code === "SATELLITE_NOT_CONFIGURED" ? "prod.audit.notConfigured"
+      : error.code === "SATELLITE_NO_IMAGERY" ? "prod.audit.noImagery"
+        : "prod.audit.unavailable";
+    return { level: "unavailable", reason, gpsPoints: plot.trackPoints?.length ?? 0 };
+  }
+}
+
+function renderPlotAuditPanel() {
+  const panel = $("#plot-audit-panel");
+  if (!panel) return;
+  const visible = state.plotTab === "all" && canRead("plots");
+  panel.hidden = !visible;
+  if (!visible) return;
+
+  const runButton = $("[data-plot-audit-run]", panel);
+  runButton.disabled = state.plotAudit.running || !state.plots.length;
+
+  const entries = state.plots
+    .map((plot) => ({ plot, result: state.plotAudit.results.get(plot.id) ?? null }))
+    .filter((entry) => entry.result);
+  const flagged = entries.filter((entry) => ["high", "medium"].includes(entry.result.level)).length;
+  const high = entries.filter((entry) => entry.result.level === "high").length;
+
+  $("#plot-audit-scanned").textContent = formatNumber(entries.length, 0);
+  $("#plot-audit-flagged").textContent = formatNumber(flagged, 0);
+  $("#plot-audit-high").textContent = formatNumber(high, 0);
+
+  const status = $("#plot-audit-status");
+  status.hidden = !(state.plotAudit.statusMessage || state.plotAudit.statusKey);
+  status.textContent = state.plotAudit.statusMessage || t(state.plotAudit.statusKey);
+
+  $("#plot-audit-body").innerHTML = entries.length
+    ? entries.map(({ plot, result }) => `
+        <tr>
+          <td><strong>${escapeHtml(plot.farmName)}</strong><small>${escapeHtml(shortId(plot.id))}</small></td>
+          <td>${escapeHtml(t("prod.audit.points", { n: formatNumber(result.gpsPoints ?? 0, 0) }))}</td>
+          <td>${escapeHtml(result.baselineFrom ? formatDate(result.baselineFrom) : "—")}
+            ${result.baselineTo ? `– ${escapeHtml(formatDate(result.baselineTo))}` : ""}</td>
+          <td>${escapeHtml(result.currentFrom ? formatDate(result.currentFrom) : "—")}
+            ${result.currentTo ? `– ${escapeHtml(formatDate(result.currentTo))}` : ""}</td>
+          <td>${result.change === undefined ? "—" : `${formatNumber(result.change, 1)}%`}</td>
+          <td>${result.confidence === undefined ? "—" : `${formatNumber(result.confidence, 0)}%`}</td>
+          <td><span class="audit-badge ${escapeHtml(result.level)}">${escapeHtml(t(result.reason ?? `prod.audit.level.${result.level}`))}</span></td>
+        </tr>`).join("")
+    : emptyRow(7, "prod.audit.empty");
+}
+
+async function runPlotAudit() {
+  if (state.plotAudit.running || !canRead("plots")) return;
+  if (!state.organization?.config?.satelliteEnabled) {
+    state.plotAudit.statusKey = "prod.audit.notConfigured";
+    state.plotAudit.statusMessage = "";
+    renderPlotAuditPanel();
+    return;
+  }
+  const plots = state.plots.filter((plot) => Boolean(plotBbox(plot)));
+  if (!plots.length) {
+    state.plotAudit.statusKey = "prod.audit.noPlots";
+    state.plotAudit.statusMessage = "";
+    state.plotAudit.results.clear();
+    renderPlotAuditPanel();
+    return;
+  }
+
+  const user = state.user;
+  const organizationId = state.organizationId;
+  state.plotAudit.running = true;
+  state.plotAudit.statusKey = "prod.audit.running";
+  state.plotAudit.statusMessage = "";
+  state.plotAudit.results.clear();
+  renderPlotAuditPanel();
+
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(PLOT_AUDIT_CONCURRENCY, plots.length) }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= plots.length) return;
+      const plot = plots[index];
+      const result = await analyzePlotEvidence(plot, user, organizationId);
+      if (!result || state.user !== user || state.organizationId !== organizationId) return;
+      state.plotAudit.results.set(plot.id, result);
+      renderPlotAuditPanel();
+    }
+  });
+
+  try {
+    await Promise.all(workers);
+    if (state.user !== user || state.organizationId !== organizationId) return;
+    const flagged = [...state.plotAudit.results.values()].filter((result) => ["high", "medium"].includes(result.level)).length;
+    state.plotAudit.statusKey = "prod.audit.completed";
+    state.plotAudit.statusMessage = t("prod.audit.completed", { n: state.plotAudit.results.size, flagged });
+  } finally {
+    if (state.user === user && state.organizationId === organizationId) {
+      state.plotAudit.running = false;
+      renderPlotAuditPanel();
+    }
+  }
+}
+
+/* ---------- polygon audit ---------- */
+
+function polygonAuditItems() {
+  return [...state.polygonAudit.items.values()];
+}
+
+function closeRing(ring) {
+  if (!ring.length) return ring;
+  const [firstLng, firstLat] = ring[0];
+  const [lastLng, lastLat] = ring[ring.length - 1];
+  if (firstLng === lastLng && firstLat === lastLat) return ring;
+  return [...ring, [firstLng, firstLat]];
+}
+
+function normalizePolygonRing(value) {
+  if (!Array.isArray(value)) throw new Error(t("prod.polygonAudit.invalid"));
+  const ring = value.map((pair) => {
+    if (!Array.isArray(pair) || pair.length < 2) throw new Error(t("prod.polygonAudit.invalid"));
+    const lng = Number(pair[0]);
+    const lat = Number(pair[1]);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) throw new Error(t("prod.polygonAudit.invalid"));
+    return [lng, lat];
+  });
+  const closed = closeRing(ring);
+  if (closed.length < 4) throw new Error(t("prod.polygonAudit.tooFewPoints"));
+  if (!ringIsSimple(closed)) throw new Error(t("prod.polygonAudit.selfIntersection"));
+  return closed;
+}
+
+function geometriesFromGeoJson(data) {
+  if (!data || typeof data !== "object") throw new Error(t("prod.polygonAudit.invalid"));
+  if (data.type === "FeatureCollection") return (data.features ?? []).flatMap((feature) => geometriesFromGeoJson(feature));
+  if (data.type === "Feature") return geometriesFromGeoJson(data.geometry);
+  if (data.type === "GeometryCollection") return (data.geometries ?? []).flatMap((geometry) => geometriesFromGeoJson(geometry));
+  if (data.type === "Polygon" || data.type === "MultiPolygon") return [data];
+  return [];
+}
+
+function ringsFromGeoJson(data) {
+  const geometries = geometriesFromGeoJson(data);
+  const rings = [];
+  for (const geometry of geometries) {
+    if (geometry.type === "Polygon" && Array.isArray(geometry.coordinates?.[0])) {
+      rings.push(geometry.coordinates[0]);
+    }
+    if (geometry.type === "MultiPolygon") {
+      for (const polygon of geometry.coordinates ?? []) {
+        if (Array.isArray(polygon?.[0])) rings.push(polygon[0]);
+      }
+    }
+  }
+  return rings;
+}
+
+function polygonAuditPlot(item) {
+  return {
+    id: item.id,
+    farmName: item.name,
+    areaHa: 0,
+    validation: {},
+    trackPoints: item.ring.map(([lng, lat]) => ({ lng, lat })),
+    polygon: { type: "Polygon", coordinates: [item.ring] },
+  };
+}
+
+function createPolygonAuditItem(ring, source = "manual") {
+  const id = `poly-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const item = {
+    id,
+    name: `Polygon ${polygonAuditItems().length + 1}`,
+    source,
+    ring,
+    result: null,
+  };
+  state.polygonAudit.items.set(id, item);
+  if (!state.polygonAudit.selectedId) state.polygonAudit.selectedId = id;
+}
+
+async function runSinglePolygonAudit(item) {
+  const result = await analyzePlotEvidence(polygonAuditPlot(item), state.user, state.organizationId);
+  if (!result) return;
+  const current = state.polygonAudit.items.get(item.id);
+  if (!current) return;
+  current.result = result;
+  state.polygonAudit.items.set(item.id, current);
+}
+
+async function runPolygonAudit(itemId = null) {
+  if (state.polygonAudit.running || !canRead("plots")) return;
+  if (!state.organization?.config?.satelliteEnabled) {
+    state.polygonAudit.statusKey = "prod.audit.notConfigured";
+    state.polygonAudit.statusMessage = "";
+    renderPolygonAuditPanel();
+    return;
+  }
+  const items = itemId ? polygonAuditItems().filter((item) => item.id === itemId) : polygonAuditItems();
+  if (!items.length) {
+    state.polygonAudit.statusKey = "prod.polygonAudit.empty";
+    state.polygonAudit.statusMessage = "";
+    renderPolygonAuditPanel();
+    return;
+  }
+  state.polygonAudit.running = true;
+  state.polygonAudit.statusKey = "prod.audit.running";
+  state.polygonAudit.statusMessage = "";
+  renderPolygonAuditPanel();
+  try {
+    for (const item of items) {
+      await runSinglePolygonAudit(item);
+      renderPolygonAuditPanel();
+    }
+    const flagged = items.filter((item) => ["high", "medium"].includes(item.result?.level)).length;
+    state.polygonAudit.statusKey = "prod.audit.completed";
+    state.polygonAudit.statusMessage = t("prod.audit.completed", { n: items.length, flagged });
+  } finally {
+    state.polygonAudit.running = false;
+    renderPolygonAuditPanel();
+  }
+}
+
+function renderPolygonAuditPanel() {
+  const panel = $("#polygon-audit-panel");
+  if (!panel) return;
+  const visible = state.plotTab === "all" && canRead("plots");
+  panel.hidden = !visible;
+  if (!visible) return;
+
+  const items = polygonAuditItems();
+  const status = $("#polygon-audit-status");
+  status.hidden = !(state.polygonAudit.statusMessage || state.polygonAudit.statusKey);
+  status.textContent = state.polygonAudit.statusMessage || t(state.polygonAudit.statusKey);
+
+  const runAllButton = $("[data-polygon-audit-run-all]", panel);
+  runAllButton.disabled = state.polygonAudit.running || !items.length;
+
+  $("#polygon-audit-body").innerHTML = items.length
+    ? items.map((item) => {
+      const selected = item.id === state.polygonAudit.selectedId;
+      return `<tr>
+          <td><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labelFor("prod.polygonAudit.source", item.source))}</small></td>
+          <td>${escapeHtml(t("prod.audit.points", { n: formatNumber(Math.max(0, item.ring.length - 1), 0) }))}</td>
+          <td>${item.result?.change === undefined ? "—" : `${formatNumber(item.result.change, 1)}%`}</td>
+          <td>${item.result?.confidence === undefined ? "—" : `${formatNumber(item.result.confidence, 0)}%`}</td>
+          <td>${item.result
+          ? `<span class="audit-badge ${escapeHtml(item.result.level)}">${escapeHtml(t(item.result.reason ?? `prod.audit.level.${item.result.level}`))}</span>`
+          : "—"}</td>
+          <td class="table-actions">
+            <button type="button" class="secondary-button" data-polygon-audit-select="${escapeHtml(item.id)}">${escapeHtml(selected ? t("prod.polygonAudit.selected") : t("prod.polygonAudit.select"))}</button>
+            <button type="button" class="secondary-button" data-polygon-audit-analyze="${escapeHtml(item.id)}">${escapeHtml(t("prod.polygonAudit.analyze"))}</button>
+            <button type="button" class="secondary-button danger" data-polygon-audit-remove="${escapeHtml(item.id)}">${escapeHtml(t("prod.polygonAudit.remove"))}</button>
+          </td>
+        </tr>`;
+    }).join("")
+    : emptyRow(6, "prod.polygonAudit.empty");
+
+  const selected = state.polygonAudit.items.get(state.polygonAudit.selectedId);
+  const mapCard = $("#polygon-audit-map-card");
+  mapCard.hidden = !selected;
+  if (!selected) return;
+
+  const plot = polygonAuditPlot(selected);
+  const mapHost = $("#polygon-audit-map");
+  const editing = state.polygonAudit.editing && state.polygonAudit.editing.id === selected.id;
+  const bbox = backgroundBbox([plot]);
+  const originalGeometry = editing ? {
+    type: "Polygon",
+    coordinates: [state.polygonAudit.editing.original],
+  } : null;
+  const activeGeometry = editing ? {
+    type: "Polygon",
+    coordinates: [state.polygonAudit.editing.ring],
+  } : plot.polygon;
+  mapHost.innerHTML = buildMapSvg([{
+    ...plot,
+    polygon: activeGeometry,
+  }], {
+    bbox,
+    interactive: editing,
+    showVertices: editing,
+    vertexDataAttribute: "data-polygon-vertex",
+    ghostPolygons: originalGeometry ? [{
+      ...plot,
+      polygon: originalGeometry,
+    }] : [],
+  }, escapeHtml);
+  mapHost.classList.toggle("editing", editing);
+
+  const controls = $("#polygon-audit-edit-controls");
+  controls.hidden = !editing;
+  const editButton = $("[data-polygon-audit-edit]", panel);
+  if (editButton) editButton.textContent = editing ? t("prod.polygonAudit.stopEditing") : t("prod.polygonAudit.edit");
+  $("#polygon-audit-selected-name").textContent = selected.name;
+}
+
+function startPolygonEdit(id) {
+  const item = state.polygonAudit.items.get(id);
+  if (!item || state.polygonAudit.running || state.edit?.saving) return;
+  state.polygonAudit.selectedId = id;
+  if (state.polygonAudit.editing?.id === id) {
+    state.polygonAudit.editing = null;
+  } else {
+    state.polygonAudit.editing = {
+      id,
+      ring: deepClone(item.ring),
+      original: deepClone(item.ring),
+    };
+  }
+  renderPolygonAuditPanel();
+}
+
+function savePolygonEdit() {
+  const editing = state.polygonAudit.editing;
+  if (!editing) return;
+  try {
+    const ring = normalizePolygonRing(editing.ring);
+    const item = state.polygonAudit.items.get(editing.id);
+    if (!item) return;
+    item.ring = ring;
+    item.result = null;
+    state.polygonAudit.items.set(editing.id, item);
+    state.polygonAudit.editing = null;
+    state.polygonAudit.statusKey = "prod.polygonAudit.saved";
+    state.polygonAudit.statusMessage = "";
+  } catch (error) {
+    state.polygonAudit.statusKey = "";
+    state.polygonAudit.statusMessage = error.message || t("prod.polygonAudit.invalid");
+  }
+  renderPolygonAuditPanel();
+}
+
+function resetPolygonEdit() {
+  if (!state.polygonAudit.editing) return;
+  state.polygonAudit.editing.ring = deepClone(state.polygonAudit.editing.original);
+  renderPolygonAuditPanel();
+}
+
+function cancelPolygonEdit() {
+  if (!state.polygonAudit.editing) return;
+  state.polygonAudit.editing = null;
+  renderPolygonAuditPanel();
+}
+
+function nudgePolygonVertex(event) {
+  const editing = state.polygonAudit.editing;
+  if (!editing) return false;
+  const handle = event.target.closest("[data-polygon-vertex]");
+  if (!handle) return false;
+  const index = Number(handle.dataset.polygonVertex);
+  if (!Number.isInteger(index) || index < 0 || index >= editing.ring.length - 1) return false;
+  if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return false;
+  event.preventDefault();
+  const step = event.shiftKey ? 0.0005 : 0.0001;
+  const [lng, lat] = editing.ring[index];
+  let nextLng = lng;
+  let nextLat = lat;
+  if (event.key === "ArrowUp") nextLat += step;
+  if (event.key === "ArrowDown") nextLat -= step;
+  if (event.key === "ArrowLeft") nextLng -= step;
+  if (event.key === "ArrowRight") nextLng += step;
+  editing.ring[index] = [nextLng, nextLat];
+  editing.ring[editing.ring.length - 1] = deepClone(editing.ring[0]);
+  renderPolygonAuditPanel();
+  return true;
+}
+
+function beginPolygonDrag(event) {
+  const editing = state.polygonAudit.editing;
+  if (!editing) return false;
+  const handle = event.target.closest("[data-polygon-vertex]");
+  if (!handle) return false;
+  const index = Number(handle.dataset.polygonVertex);
+  if (!Number.isInteger(index) || index < 0 || index >= editing.ring.length - 1) return false;
+  const map = $("#polygon-audit-map .geo-map");
+  if (!map) return false;
+  event.preventDefault();
+  state.dragging = { type: "polygon-vertex", vertexIndex: index, map };
+  return true;
+}
+
+function movePolygonDrag(event) {
+  const drag = state.dragging;
+  const editing = state.polygonAudit.editing;
+  if (!drag || drag.type !== "polygon-vertex" || !editing) return false;
+  const point = svgPoint(drag.map, event.clientX, event.clientY);
+  if (!point) return true;
+  const bbox = backgroundBbox([polygonAuditPlot(state.polygonAudit.items.get(editing.id))]);
+  const projection = createProjection([], bbox);
+  const vertex = projection.unproject(point);
+  if (!vertex) return true;
+  editing.ring[drag.vertexIndex] = vertex;
+  editing.ring[editing.ring.length - 1] = deepClone(editing.ring[0]);
+  renderPolygonAuditPanel();
+  return true;
+}
+
+function endPolygonDrag() {
+  if (state.dragging?.type !== "polygon-vertex") return false;
+  state.dragging = false;
+  return true;
+}
+
+async function addPolygonFromFile(file) {
+  const text = await file.text();
+  const parsed = JSON.parse(text);
+  const rings = ringsFromGeoJson(parsed).map((ring) => normalizePolygonRing(ring));
+  if (!rings.length) throw new Error(t("prod.polygonAudit.noPolygons"));
+  rings.forEach((ring) => createPolygonAuditItem(ring, "upload"));
+}
+
+function addManualPolygon() {
+  const input = $("#polygon-audit-manual");
+  const value = input.value.trim();
+  if (!value) throw new Error(t("prod.polygonAudit.emptyManual"));
+  const parsed = JSON.parse(value);
+  const rings = Array.isArray(parsed) && Array.isArray(parsed[0]) ? [normalizePolygonRing(parsed)] : ringsFromGeoJson(parsed).map((ring) => normalizePolygonRing(ring));
+  if (!rings.length) throw new Error(t("prod.polygonAudit.noPolygons"));
+  rings.forEach((ring) => createPolygonAuditItem(ring, "manual"));
+  input.value = "";
+}
+
 /* ---------- GeoJSON versions ---------- */
 
 function versionsFor(plot) {
@@ -924,10 +1491,14 @@ function startEdit(plotId) {
 
 const editProjection = () => createProjection([], state.edit.bbox);
 
-function svgPoint(event) {
-  const matrix = $("#plot-map .geo-map")?.getScreenCTM();
+function svgPoint(input, clientX = null, clientY = null) {
+  const map = input instanceof SVGGraphicsElement ? input : $("#plot-map .geo-map");
+  const x = input instanceof SVGGraphicsElement ? clientX : input.clientX;
+  const y = input instanceof SVGGraphicsElement ? clientY : input.clientY;
+  if (!map || x === null || y === null) return null;
+  const matrix = map.getScreenCTM();
   if (!matrix) return null;
-  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+  const point = new DOMPoint(x, y).matrixTransform(matrix.inverse());
   return [point.x, point.y];
 }
 
@@ -961,6 +1532,7 @@ function syncEditGeometry() {
 }
 
 function beginDrag(event) {
+  if (beginPolygonDrag(event)) return;
   const edit = state.edit;
   if (!edit || edit.saving) return;
   const handle = event.target.closest?.("[data-vertex]");
@@ -976,6 +1548,7 @@ function beginDrag(event) {
 }
 
 function moveDrag(event) {
+  if (movePolygonDrag(event)) return;
   const edit = state.edit;
   if (!edit?.drag) return;
   const point = svgPoint(event);
@@ -989,6 +1562,7 @@ function moveDrag(event) {
 }
 
 function endDrag() {
+  if (endPolygonDrag()) return;
   if (state.edit) state.edit.drag = null;
   state.dragging = false;
   if (state.redrawAfterDrag) {
@@ -1145,6 +1719,8 @@ function renderPlots() {
   if (plot) renderPlotPane(plot);
   else renderPlotsOverview();
   renderSatellitePanel();
+  renderPlotAuditPanel();
+  renderPolygonAuditPanel();
 }
 
 function visibleSatellitePlots() {
@@ -2023,6 +2599,23 @@ $("#plots-body").addEventListener("change", (event) => {
   else state.selectedPlotIds.delete(checkbox.dataset.plotSelect);
 });
 
+$("#polygon-audit-upload")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  event.target.value = "";
+  void (async () => {
+    try {
+      await addPolygonFromFile(file);
+      state.polygonAudit.statusKey = "prod.polygonAudit.uploaded";
+      state.polygonAudit.statusMessage = t("prod.polygonAudit.uploaded");
+    } catch (error) {
+      state.polygonAudit.statusKey = "";
+      state.polygonAudit.statusMessage = error.message || t("prod.polygonAudit.invalid");
+    }
+    renderPolygonAuditPanel();
+  })();
+});
+
 correctionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(correctionForm);
@@ -2190,6 +2783,61 @@ document.addEventListener("click", (event) => {
     void startSatelliteAnalysis();
     return;
   }
+  if (event.target.closest("[data-plot-audit-run]")) {
+    void runPlotAudit();
+    return;
+  }
+  if (event.target.closest("[data-polygon-upload-trigger]")) {
+    $("#polygon-audit-upload")?.click();
+    return;
+  }
+  if (event.target.closest("[data-polygon-manual-add]")) {
+    try {
+      addManualPolygon();
+      state.polygonAudit.statusKey = "prod.polygonAudit.added";
+      state.polygonAudit.statusMessage = t("prod.polygonAudit.added");
+    } catch (error) {
+      state.polygonAudit.statusKey = "";
+      state.polygonAudit.statusMessage = error.message || t("prod.polygonAudit.invalid");
+    }
+    renderPolygonAuditPanel();
+    return;
+  }
+  if (event.target.closest("[data-polygon-audit-run-all]")) {
+    void runPolygonAudit();
+    return;
+  }
+  const polygonSelect = event.target.closest("[data-polygon-audit-select]");
+  if (polygonSelect) {
+    state.polygonAudit.selectedId = polygonSelect.dataset.polygonAuditSelect;
+    renderPolygonAuditPanel();
+    return;
+  }
+  const polygonAnalyze = event.target.closest("[data-polygon-audit-analyze]");
+  if (polygonAnalyze) {
+    void runPolygonAudit(polygonAnalyze.dataset.polygonAuditAnalyze);
+    return;
+  }
+  const polygonRemove = event.target.closest("[data-polygon-audit-remove]");
+  if (polygonRemove) {
+    const id = polygonRemove.dataset.polygonAuditRemove;
+    state.polygonAudit.items.delete(id);
+    if (state.polygonAudit.selectedId === id) {
+      state.polygonAudit.selectedId = polygonAuditItems()[0]?.id ?? null;
+      state.polygonAudit.editing = null;
+    }
+    state.polygonAudit.statusKey = "prod.polygonAudit.removed";
+    state.polygonAudit.statusMessage = "";
+    renderPolygonAuditPanel();
+    return;
+  }
+  if (event.target.closest("[data-polygon-audit-edit]")) {
+    if (state.polygonAudit.selectedId) startPolygonEdit(state.polygonAudit.selectedId);
+    return;
+  }
+  if (event.target.closest("[data-polygon-geo-save]")) { savePolygonEdit(); return; }
+  if (event.target.closest("[data-polygon-geo-reset]")) { resetPolygonEdit(); return; }
+  if (event.target.closest("[data-polygon-geo-cancel]")) { cancelPolygonEdit(); return; }
   const satelliteLoad = event.target.closest("[data-satellite-load]");
   const satelliteImage = event.target.closest("[data-satellite-image]");
   if (satelliteLoad || satelliteImage) {
@@ -2282,6 +2930,7 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (nudgePolygonVertex(event)) return;
   if (nudgeVertex(event)) return;
   const tabs = event.target.closest?.("#plot-tabs");
   if (tabs && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
