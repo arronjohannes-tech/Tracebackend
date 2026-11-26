@@ -9,3 +9,6 @@ asteros/
 .vercel
 .env*
 .neon
+.vscode/
+_.dataspace.copernicus.eu.crt
+file.png
