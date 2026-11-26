@@ -28,6 +28,7 @@ import {
   ApiError,
   getApiBaseUrl,
   getCurrentAuthHeaders,
+  getPlotDocuments,
   recordSessionActivity,
   getOperation,
   getRemoteShipments,
@@ -66,9 +67,8 @@ import OrganicMapPreview from "./OrganicMapPreview";
 import PlotMapPreview from "./PlotMapPreview";
 import { normalizePhone, phoneCountries, searchPhoneCountries } from "../onboarding";
 
-const appName = Platform.OS === "android" && process.env.EXPO_PUBLIC_ASTERTRACE_ANDROID_TEST === "1"
-  ? "Astertrace"
-  : "Tracecomplaince";
+const isAstertrace = Platform.OS === "android" && process.env.EXPO_PUBLIC_ASTERTRACE_ANDROID_TEST === "1";
+const appName = isAstertrace ? "Astertrace" : "Tracecomplaince";
 
 const palette = {
   ink: "#14251D",
@@ -591,6 +591,7 @@ function PlotsScreen({
 }) {
   const [producer, setProducer] = useState("");
   const [farm, setFarm] = useState("");
+  const [region, setRegion] = useState("");
   const [area, setArea] = useState("");
   const [supplierId, setSupplierId] = useState(selectedSupplierId ?? "");
   const [documentId, setDocumentId] = useState("");
@@ -599,6 +600,7 @@ function PlotsScreen({
   const watchRef = useRef<Location.LocationSubscription | null>(null);
   const [tracking, setTracking] = useState(false);
   const [geoJsonText, setGeoJsonText] = useState("");
+  const [geoJsonImported, setGeoJsonImported] = useState(false);
   const [polygon, setPolygon] = useState<GeoJsonPolygon | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<"producer" | "farm" | "area", string>>>({});
   const [polygonError, setPolygonError] = useState<string | null>(null);
@@ -684,6 +686,7 @@ function PlotsScreen({
     replaceTrackPoints([]);
     setPolygon(null);
     setGeoJsonText("");
+    setGeoJsonImported(false);
     setPolygonError(null);
     setFix(null);
   }
@@ -759,6 +762,7 @@ function PlotsScreen({
       }
       setPolygon(null);
       setGeoJsonText("");
+      setGeoJsonImported(false);
       setTracking(true);
       watchRef.current = await Location.watchPositionAsync(
         {
@@ -793,6 +797,7 @@ function PlotsScreen({
     replaceTrackPoints(trackPointsRef.current.slice(0, -1));
     setPolygon(null);
     setGeoJsonText("");
+    setGeoJsonImported(false);
   }
 
   async function importGeoJson() {
@@ -803,8 +808,17 @@ function PlotsScreen({
     if (result.canceled) return;
     try {
       const text = await fetch(result.assets[0].uri).then((response) => response.text());
-      setGeoJsonText(text);
-      applyPolygonText(text);
+      if (!isAstertrace) {
+        setGeoJsonText(text);
+        applyPolygonText(text);
+        return;
+      }
+      const imported = parsePolygon(text);
+      setPolygon(imported);
+      replaceTrackPoints([]);
+      setGeoJsonText(JSON.stringify(imported, null, 2));
+      setGeoJsonImported(true);
+      setPolygonError(null);
     } catch {
       Alert.alert(t.plots.invalidPolygon);
     }
@@ -857,6 +871,7 @@ function PlotsScreen({
       documentId: documentId || undefined,
       producer: producer.trim(),
       farmName: farm.trim(),
+      ...(region.trim() ? { region: region.trim() } : {}),
       areaHa: parsedArea.toFixed(2),
       polygon: polygonForSave,
       trackPoints,
@@ -887,12 +902,14 @@ function PlotsScreen({
     }));
     setProducer("");
     setFarm("");
+    setRegion("");
     setArea("");
     setSupplierId(selectedSupplierId ?? "");
     setDocumentId("");
     replaceTrackPoints([]);
     setPolygon(null);
     setGeoJsonText("");
+    setGeoJsonImported(false);
     setFix(null);
     Alert.alert(t.alerts.saved);
   }
@@ -911,6 +928,7 @@ function PlotsScreen({
           setFieldErrors((current) => ({ ...current, farm: undefined }));
         }} invalid={Boolean(fieldErrors.farm)} />
         {fieldErrors.farm ? <Text style={styles.errorText}>{fieldErrors.farm}</Text> : null}
+        {isAstertrace ? <Field label={t.common.region} value={region} onChangeText={(value) => setRegion(value.slice(0, 200))} /> : null}
         <Field label={t.plots.area} value={area} onChangeText={(value) => {
           setArea(value);
           setFieldErrors((current) => ({ ...current, area: undefined }));
@@ -985,7 +1003,7 @@ function PlotsScreen({
           disabled={locating}
         />
         {fix ? <LocationFix fix={fix} t={t} /> : null}
-        {uploadedDocuments.length ? (
+        {!isAstertrace && uploadedDocuments.length ? (
           <View>
             <Text style={styles.fieldLabel}>{t.plots.selectDocument}</Text>
             <Pressable
@@ -1008,7 +1026,7 @@ function PlotsScreen({
             ))}
           </View>
         ) : null}
-        {Platform.OS === "android" ? (
+        {Platform.OS === "android" && !isAstertrace ? (
           <OrganicMapPreview polygon={polygon} trackPoints={trackPoints} t={t} />
         ) : (
           <PlotMapPreview
@@ -1020,7 +1038,7 @@ function PlotsScreen({
           />
         )}
         <Button label={t.plots.importGeoJson} icon="document-attach" onPress={() => void importGeoJson()} secondary />
-        <Field
+        {(!isAstertrace || geoJsonImported) ? <Field
           label={t.plots.polygonJson}
           value={geoJsonText}
           onChangeText={(value) => {
@@ -1031,10 +1049,10 @@ function PlotsScreen({
           multiline
           placeholder='{"type":"Polygon","coordinates":[...]}'
           invalid={Boolean(polygonError)}
-        />
-        <Text style={styles.caption}>{t.plots.polygonHint}</Text>
+        /> : null}
+        {(!isAstertrace || geoJsonImported) ? <Text style={styles.caption}>{t.plots.polygonHint}</Text> : null}
         {polygonError ? <Text style={styles.errorText}>{polygonError}</Text> : null}
-        <Button label={t.plots.applyGeoJson} icon="checkmark-circle" onPress={() => applyPolygonText()} secondary />
+        {(!isAstertrace || geoJsonImported) ? <Button label={t.plots.applyGeoJson} icon="checkmark-circle" onPress={() => applyPolygonText()} secondary /> : null}
         <Button label={t.plots.saveDraft} icon="save" onPress={savePlot} />
       </View>
       {state.plots.length === 0 ? <Text style={styles.empty}>{t.plots.empty}</Text> : null}
@@ -1043,6 +1061,7 @@ function PlotsScreen({
           <View style={styles.rowBetween}>
             <View style={styles.flex}>
               <Text style={styles.cardTitle}>{plot.farmName}</Text>
+              {isAstertrace && plot.region ? <Text style={styles.caption}>{t.common.region}: {plot.region}</Text> : null}
               <Text style={styles.caption}>{plot.producer} · {plot.areaHa} ha</Text>
             </View>
             <Badge status={plot.syncStatus} t={t} />
@@ -1076,7 +1095,7 @@ function PlotsScreen({
               })()}
             </View>
           ) : null}
-          {Platform.OS === "android" ? (
+          {Platform.OS === "android" && !isAstertrace ? (
             <OrganicMapPreview polygon={plot.polygon} trackPoints={plot.trackPoints ?? []} t={t} />
           ) : (
             <PlotMapPreview
@@ -1087,7 +1106,7 @@ function PlotsScreen({
               unavailableLabel={t.plots.mapUnavailable}
             />
           )}
-          <Text style={styles.mono}>{JSON.stringify(plot.polygon)}</Text>
+          {!isAstertrace ? <Text style={styles.mono}>{JSON.stringify(plot.polygon)}</Text> : null}
         </View>
       ))}
     </>
@@ -1099,11 +1118,13 @@ function OperationsScreen({
   update,
   t,
   online,
+  authScope,
 }: {
   state: PersistedState;
   update: (recipe: (current: PersistedState) => PersistedState) => void;
   t: Translation;
   online: boolean;
+  authScope: { userId: string; organizationId: string };
 }) {
   const [collapsed, setCollapsed] = useState({
     uploads: false,
@@ -1111,6 +1132,19 @@ function OperationsScreen({
     downloads: false,
   });
   const configured = getApiBaseUrl() !== null;
+  const activeScope = useRef(`${authScope.userId}:${authScope.organizationId}`);
+  activeScope.current = `${authScope.userId}:${authScope.organizationId}`;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
+  const selectedPlot = state.plots.find((plot) => plot.id === selectedPlotId);
+  const canUpload = configured && online && Boolean(selectedPlot && selectedPlot.syncStatus === "synced");
+  const visibleDocuments = isAstertrace
+    ? state.documents.filter((document) => document.plotId === selectedPlotId)
+    : state.documents;
   const evidenceOperations = state.operations.filter((operation) => operation.kind === "evidence_pack");
   const downloadableOperations = evidenceOperations.filter((operation) =>
     operation.downloadUrl || operation.localDownloadUri || operation.localDownloadStatus === "queued",
@@ -1245,6 +1279,10 @@ function OperationsScreen({
       Alert.alert(t.sync.notConfigured, t.operations.providerBlocked);
       return;
     }
+    if (isAstertrace && !canUpload) {
+      Alert.alert(t.operations.plotUploadRequired);
+      return;
+    }
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
     if (result.canceled) return;
     const asset = result.assets[0];
@@ -1254,6 +1292,10 @@ function OperationsScreen({
   async function pickImageForOcr(camera: boolean) {
     if (!configured) {
       Alert.alert(t.sync.notConfigured, t.operations.providerBlocked);
+      return;
+    }
+    if (isAstertrace && !canUpload) {
+      Alert.alert(t.operations.plotUploadRequired);
       return;
     }
     if (camera) {
@@ -1283,11 +1325,15 @@ function OperationsScreen({
   }
 
   async function uploadAsset(uri: string, name: string, mimeType: string, size: number) {
+    const uploadScope = `${authScope.userId}:${authScope.organizationId}`;
+    const isCurrentUpload = () => mounted.current && activeScope.current === uploadScope;
+    if (!isCurrentUpload()) return;
     const localId = createUuid();
     update((current) => ({
       ...current,
       documents: [{
         id: localId,
+        ...(isAstertrace && selectedPlotId ? { plotId: selectedPlotId } : {}),
         fileName: name,
         mimeType,
         size,
@@ -1302,7 +1348,9 @@ function OperationsScreen({
         mimeType,
         size,
         idempotencyKey: localId,
+        ...(isAstertrace && selectedPlotId ? { plotId: selectedPlotId, expectedScope: authScope } : {}),
       });
+      if (!isCurrentUpload()) return;
       update((current) => ({
         ...current,
         documents: current.documents.map((document) =>
@@ -1317,6 +1365,7 @@ function OperationsScreen({
             Alert.alert(t.operations.ocrUnavailable);
           } else {
             const result = await recognizeText(uri);
+            if (!isCurrentUpload()) return;
             update((current) => ({
               ...current,
               documents: current.documents.map((document) =>
@@ -1328,6 +1377,7 @@ function OperationsScreen({
             if (!result.text.trim()) Alert.alert(t.operations.ocrEmpty);
           }
         } catch (error) {
+          if (!isCurrentUpload()) return;
           Alert.alert(
             t.operations.ocrFailed,
             error instanceof Error ? error.message : String(error),
@@ -1335,6 +1385,7 @@ function OperationsScreen({
         }
       }
     } catch (error) {
+      if (!isCurrentUpload()) return;
       update((current) => ({
         ...current,
         documents: current.documents.map((document) =>
@@ -1376,6 +1427,34 @@ function OperationsScreen({
   }
 
   useEffect(() => {
+    if (!isAstertrace || !selectedPlotId || !online || selectedPlot?.syncStatus !== "synced") return;
+    let active = true;
+    void getPlotDocuments(selectedPlotId, authScope).then((documents) => {
+      if (!active) return;
+      update((current) => {
+        const remoteIds = new Set(documents.map((document) => document.id));
+        return {
+          ...current,
+          documents: [
+            ...documents.map((document) => {
+              const local = current.documents.find((item) => item.id === document.id);
+              return {
+                ...document,
+                localOcrText: local?.localOcrText,
+                localOcrReviewed: local?.localOcrReviewed,
+              };
+            }),
+            ...current.documents.filter((document) => !remoteIds.has(document.id)),
+          ],
+        };
+      });
+    }).catch((error: unknown) => {
+      if (active) Alert.alert(t.common.failed, providerError(error));
+    });
+    return () => { active = false; };
+  }, [selectedPlotId, online, selectedPlot?.syncStatus, authScope.userId, authScope.organizationId]);
+
+  useEffect(() => {
     if (!online) return;
     if (state.operations.some((operation) => operation.localDownloadStatus === "downloading")) return;
     const queued = state.operations.find((operation) =>
@@ -1393,6 +1472,23 @@ function OperationsScreen({
   return (
     <>
       <Section title={t.operations.title} />
+      {isAstertrace ? (
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>{t.operations.plotSelection}</Text>
+          {state.plots.map((plot) => (
+            <Pressable
+              key={plot.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: plot.id === selectedPlotId }}
+              onPress={() => setSelectedPlotId(plot.id)}
+              style={[styles.documentChoice, plot.id === selectedPlotId && styles.documentChoiceSelected]}
+            >
+              <Text>{plot.id} · {plot.farmName}</Text>
+            </Pressable>
+          ))}
+          {!canUpload ? <Text style={styles.caption}>{t.operations.plotUploadRequired}</Text> : null}
+        </View>
+      ) : null}
       {!configured ? (
         <View style={styles.blocking}>
           <Ionicons name="warning" size={23} color={palette.red} />
@@ -1404,28 +1500,28 @@ function OperationsScreen({
       ) : null}
       <CollapsibleListSection
         title={t.operations.uploadsList}
-        count={state.documents.length}
+        count={visibleDocuments.length}
         collapsed={collapsed.uploads}
         onToggle={() => setCollapsed((current) => ({ ...current, uploads: !current.uploads }))}
       >
-        <Button label={t.operations.pickUpload} icon="cloud-upload" onPress={() => void pickAndUpload()} disabled={!configured} />
+        <Button label={t.operations.pickUpload} icon="cloud-upload" onPress={() => void pickAndUpload()} disabled={isAstertrace ? !canUpload : !configured} />
         <View style={styles.buttonRow}>
           <Button
             label={t.operations.scanPhoto}
             icon="camera"
             onPress={() => void pickImageForOcr(true)}
             secondary
-            disabled={!configured}
+            disabled={isAstertrace ? !canUpload : !configured}
           />
           <Button
             label={t.operations.chooseImage}
             icon="image"
             onPress={() => void pickImageForOcr(false)}
             secondary
-            disabled={!configured}
+            disabled={isAstertrace ? !canUpload : !configured}
           />
         </View>
-        {state.documents.map((document) => (
+        {visibleDocuments.map((document) => (
           <View key={document.id} style={styles.listRow}>
             <View style={[styles.flex, styles.documentRow]}>
               <Text style={styles.itemTitle}>{document.fileName}</Text>
@@ -1994,11 +2090,11 @@ export function AppView({ controller }: { controller: AppController }) {
       );
     }
     if (activeTab === "operations") {
-      return <OperationsScreen state={state} update={update} t={t} online={online && configured} />;
+      return <OperationsScreen state={state} update={update} t={t} online={online && configured} authScope={{ userId: auth.session?.user.id ?? "", organizationId: auth.session?.selectedOrganizationId ?? "" }} />;
     }
     if (activeTab === "help") return <Section title={t.help.title} description={t.help.body} />;
     return <HomeScreen state={state} t={t} />;
-  }, [activeTab, state, t, update, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments, offlineMapUri]);
+  }, [activeTab, state, t, update, auth.session?.user.id, auth.session?.selectedOrganizationId, online, configured, selectedSupplierId, selectedShipmentId, remoteShipments, offlineMapUri]);
 
   if (auth.activation) {
     return <ActivationScreen key={auth.activation.token ?? "activation-result"} controller={controller} />;
@@ -2121,7 +2217,7 @@ export function AppView({ controller }: { controller: AppController }) {
           </Section>
         ) : null}
         <View style={{ display: activeTab === "plots" ? "flex" : "none" }}>
-          <OfflineMapSetup t={t} onMapChange={setOfflineMapUri} />
+          <OfflineMapSetup t={t} onMapChange={setOfflineMapUri} offerDownload={isAstertrace} />
         </View>
         {screen}
       </ScrollView>

@@ -51,15 +51,18 @@ EXPO_PUBLIC_API_URL=http://localhost:3000
 
 Es ist keine Produktions-URL fest eingebaut. Für ein physisches Gerät muss die URL vom Gerät erreichbar sein; `localhost` verweist dort auf das Gerät selbst.
 OCR benötigt einen nativen Android-/iOS-Build (Expo Go unterstützt das native Modul nicht).
-Android kann Grenzen und GPS-Aufzeichnungen als GeoJSON-Momentaufnahme über das
-Teilen-Menü an die kostenlose App [Organic Maps](https://organicmaps.app/) übergeben.
-Falls sie fehlt, bietet die App ihre Installation an. Für die Offline-Nutzung muss
-die benötigte Region zuvor in Organic Maps heruntergeladen werden. Grenzen und
-Aussparungen werden als Linien, nicht als gefüllte Flächen dargestellt; die Anzeige
-wird während einer laufenden Grenzbegehung nicht automatisch aktualisiert. Der Nutzer
-wählt das Ziel der Freigabe und kann die Karte erneut öffnen, um neue Punkte zu sehen.
-Früher in Trace heruntergeladene Offline-Karten können weiterhin entfernt werden.
-GPS-Punkte und Plots können auch ohne Karten-App erfasst werden.
+In Astertrace zeigt eine eingebettete MapLibre-Karte Plot-Grenzen, GPS-Spuren und
+Messpunkte. Nach Bestätigung wird einmalig die gesamte Äthiopien-Karte von
+[Geofabrik](https://download.geofabrik.de/africa/ethiopia.html) heruntergeladen
+(ungefähr 350 MiB); danach stehen die Karte und ihre Ortsnamen ohne Internet zur
+Verfügung. Das Regionsfeld wird mit dem Plot gespeichert, während die GPS-Daten
+den Kartenausschnitt bestimmen. Die Karte basiert auf OpenStreetMap-Daten (ODbL),
+ist keine Satellitenkarte und enthält nur die im Datensatz verfügbaren Beschriftungen.
+Noto-Schriften für lateinische und äthiopische Beschriftungen sind unter der SIL
+Open Font License in `assets/mapfonts` enthalten.
+Die bisherige Android-Version kann Grenzen und GPS-Aufzeichnungen weiterhin als
+GeoJSON-Momentaufnahme an [Organic Maps](https://organicmaps.app/) übergeben.
+GPS-Punkte und Plots können auch ohne heruntergeladene Karte erfasst werden.
 Die Web-Version lädt keine externen Kartenkacheln.
 
 Für eine separat installierbare Android-Testversion mit dem Namen Astertrace:
@@ -69,6 +72,12 @@ konfigurierten Backend. Aktivierungslinks können bei parallel installierten
 Versionen an die andere App weitergeleitet werden.
 
 Offline gespeicherte Plots bleiben in der lokalen Outbox bis zur Synchronisierung.
+In Astertrace können Dokumente unter Vorgänge einer ausgewählten Plot-ID zugeordnet
+werden. Ein Upload setzt eine Internetverbindung und einen bereits synchronisierten
+Plot voraus; es gibt keine Offline-Warteschlange für Dokumente. Bestehende Dokumente
+ohne diese Zuordnung werden nicht automatisch einem Plot zugewiesen. Die Backend-
+Migrationen 018 und 019 und die zugehörigen API-Änderungen müssen vor der Nutzung
+auf dem Server bereitgestellt sein.
 Eine Erstanmeldung und die Erneuerung einer abgelaufenen Sitzung benötigen weiterhin
 Internet; Geofence-Prüfungen verwenden offline nur zuvor geladene Daten.
 Die Grenzbegehung läuft nur bei geöffneter App und erfordert aktivierte Standortdienste,
@@ -86,6 +95,7 @@ Verwendete Endpunkte:
 - `GET /api/v1/sync/pull?cursor=...`
 - `GET /api/v1/shipments`
 - `POST /api/v1/documents/uploads`
+- `GET /api/v1/plots/:plotId/documents`
 - `POST /api/v1/documents/uploads/:id/complete`
 - `POST|GET /api/v1/satellite/analyses[/:id]`
 - `POST|GET /api/v1/evidence-packs[/:id]`

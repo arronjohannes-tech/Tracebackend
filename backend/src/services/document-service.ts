@@ -9,7 +9,7 @@ import { constantTimeEqual, hashOpaqueToken } from "../security.js";
 import { createObjectStore, type ObjectStore } from "../infrastructure/object-store.js";
 import * as repository from "../repositories/document-repository.js";
 import { assertPermission, hasRole, loadPermissions } from "../permissions.js";
-export type UploadInput = { fileName: string; mimeType: string; size: number };
+export type UploadInput = { fileName: string; mimeType: string; size: number; plotId?: string | undefined };
 function canWrite(auth: AuthContext) {
     if (!auth.organizationId || !hasRole(auth, ["org_admin", "field_agent"])) throw new AppError(403, "FORBIDDEN", "This account cannot upload documents.");
 }
@@ -23,16 +23,30 @@ export function createDocumentService(pool: Pool, config: AppConfig, store: Obje
             return withContext(pool, auth, async client => {
                 await repository.lockUpload(client, auth.organizationId!, key);
                 const existing = await repository.byKey(client, auth.organizationId!, key);
-                if (existing && (existing.file_name !== body.fileName || existing.mime_type !== body.mimeType || Number(existing.byte_size) !== body.size)) throw conflict("IDEMPOTENCY_KEY_REUSED", "Upload metadata differs.");
+                if (existing && (existing.file_name !== body.fileName || existing.mime_type !== body.mimeType || Number(existing.byte_size) !== body.size || existing.plot_id !== (body.plotId ?? null))) throw conflict("IDEMPOTENCY_KEY_REUSED", "Upload metadata differs.");
+                if (body.plotId && !await repository.plotExists(client, auth.organizationId!, body.plotId)) throw notFound("Plot");
                 const id = existing?.id ?? randomUUID();
                 const expiry = existing && existing.upload_expires_at.getTime() > Date.now() ? existing.upload_expires_at : new Date(Date.now() + 86400000);
                 const token = uploadToken(config.JWT_SECRET, id, expiry);
                 if (existing) await repository.renew(client, id, hashOpaqueToken(token), expiry);
                 else {
-                    await repository.insert(client, [id, auth.organizationId, body.fileName, body.mimeType, body.size, auth.organizationId + "/" + id, hashOpaqueToken(token), key, auth.userId, expiry]);
+                    await repository.insert(client, [id, auth.organizationId, body.fileName, body.mimeType, body.size, auth.organizationId + "/" + id, hashOpaqueToken(token), key, auth.userId, expiry, body.plotId ?? null]);
                     await writeAudit(client, audit, auth, "document.upload.initiate", "document", id, { fileName: body.fileName, size: body.size });
                 }
                 return { documentId: id, uploadUrl: config.PUBLIC_BASE_URL + "/api/v1/documents/uploads/" + id + "/content", headers: { "Content-Type": "application/octet-stream", "X-Upload-Token": token }, expiresAt: expiry.toISOString() };
+            });
+        },
+        async listForPlot(auth: AuthContext, plotId: string) {
+            if (!auth.organizationId) throw new AppError(403, "ORGANIZATION_REQUIRED", "Organization user required.");
+            assertPermission(auth, "dds", false);
+            return withContext(pool, auth, async client => {
+                if (!await repository.plotExists(client, auth.organizationId!, plotId)) throw notFound("Plot");
+                const rows = await repository.listForPlot(client, auth.organizationId!, plotId);
+                return rows.map(row => ({
+                    id: row.id, plotId: row.plot_id, fileName: row.file_name,
+                    mimeType: row.mime_type, size: Number(row.byte_size),
+                    status: "uploaded" as const, createdAt: row.created_at.toISOString(),
+                }));
             });
         },
         async content(id: string, token: string, bytes: Buffer) {

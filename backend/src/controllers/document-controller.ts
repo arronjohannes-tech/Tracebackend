@@ -5,13 +5,17 @@ import type { AppConfig } from "../config.js";
 import { AppError } from "../errors.js";
 import { parse, authOf, sendData, uuidSchema } from "../http.js";
 import { createDocumentService } from "../services/document-service.js";
-const input = z.object({ fileName: z.string().trim().min(1).max(255), mimeType: z.string().min(1).max(150), size: z.number().int().min(1).max(52428800) });
+const input = z.object({ fileName: z.string().trim().min(1).max(255), mimeType: z.string().min(1).max(150), size: z.number().int().min(1).max(52428800), plotId: uuidSchema.optional() });
 const params = z.object({ documentId: uuidSchema });
 export async function registerDocumentRoutes(app: FastifyInstance, pool: Pool, config: AppConfig, authenticate: (request: FastifyRequest) => Promise<void>) {
     const service = createDocumentService(pool, config), secured = { preHandler: authenticate };
     app.post("/api/v1/documents/uploads", secured, async (request, reply) => {
         const key = parse(z.string().min(8).max(200), request.headers["idempotency-key"]);
         return sendData(reply, await service.initiate(authOf(request), request, parse(input, request.body), key), 201);
+    });
+    app.get("/api/v1/plots/:plotId/documents", secured, async (request, reply) => {
+        const { plotId } = parse(z.object({ plotId: uuidSchema }), request.params);
+        return sendData(reply, await service.listForPlot(authOf(request), plotId));
     });
     app.put("/api/v1/documents/uploads/:documentId/content", async (request, reply) => {
         const { documentId } = parse(params, request.params);

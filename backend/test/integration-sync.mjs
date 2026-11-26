@@ -8,6 +8,7 @@ import net from "node:net";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { versionMatches } from "../src/domain/sync.ts";
+import { createDocumentService } from "../src/services/document-service.ts";
 const root=path.resolve(".test-runtime",randomUUID()),data=path.join(root,"database"),password=randomBytes(24).toString("hex"),pw=path.join(root,"password");
 await mkdir(root,{recursive:true});await writeFile(pw,password);
 const listener=net.createServer();await new Promise(resolve=>listener.listen(0,"127.0.0.1",resolve));
@@ -87,7 +88,47 @@ try {
  console.log("PASS: rollback gaps do not lose committed changes.");
  assert.equal(versionMatches(2,1),false);assert.equal(versionMatches(2,2),true);
  console.log("PASS: server revision comparison rejects stale edits independently of device time.");
- console.log("Integration checks: 6 passed, 0 failed. Real PostgreSQL; migrations 004-007 on minimal tables. PostGIS/full migration not covered.");
+ await a.query(`ALTER TABLE plots ADD COLUMN organization_id uuid, ADD PRIMARY KEY(organization_id,id);
+ ALTER TABLE organizations ADD COLUMN active boolean NOT NULL DEFAULT true;
+ ALTER TABLE users ADD COLUMN organization_id uuid, ADD COLUMN role text NOT NULL DEFAULT 'field_agent',
+   ADD COLUMN assigned_roles text[] NOT NULL DEFAULT ARRAY['field_agent'], ADD COLUMN token_version integer NOT NULL DEFAULT 1,
+   ADD COLUMN active boolean NOT NULL DEFAULT true, ADD COLUMN deleted_at timestamptz;
+ ALTER TABLE documents ADD PRIMARY KEY(id), ADD COLUMN organization_id uuid, ADD COLUMN storage_key text,
+   ADD COLUMN file_name text, ADD COLUMN mime_type text, ADD COLUMN byte_size bigint,
+   ADD COLUMN status text NOT NULL DEFAULT 'pending', ADD COLUMN upload_token_hash text,
+   ADD COLUMN idempotency_key text, ADD COLUMN created_by uuid, ADD COLUMN created_at timestamptz NOT NULL DEFAULT now(),
+   ADD COLUMN sha256 text;
+ CREATE TABLE role_permissions(organization_id uuid, role text, section text, can_read boolean, can_write boolean);
+ CREATE TABLE audit_logs(organization_id uuid, actor_user_id uuid, action text, resource_type text,
+   resource_id uuid, ip inet, user_agent text, details jsonb);`);
+ await a.query(await readFile(new URL("../migrations/018_plot_region.sql",import.meta.url),"utf8"));
+ await a.query(await readFile(new URL("../migrations/019_document_plot.sql",import.meta.url),"utf8"));
+ const owner=randomUUID(), plotId=randomUUID(), otherOrg=randomUUID(), otherPlot=randomUUID();
+ await a.query("INSERT INTO organizations(id) VALUES($1)",[otherOrg]);
+ await a.query("INSERT INTO users(id,organization_id) VALUES($1,$2)",[owner,invitedOrg]);
+ await a.query("INSERT INTO plots(id,organization_id,region) VALUES($1,$2,'Oromia'),($3,$4,'Sidama')",[plotId,invitedOrg,otherPlot,otherOrg]);
+ assert.equal((await a.query("SELECT region FROM plots WHERE id=$1",[plotId])).rows[0].region,"Oromia");
+ await assert.rejects(a.query("INSERT INTO documents(id,organization_id,plot_id) VALUES($1,$2,$3)",[randomUUID(),invitedOrg,otherPlot]),/foreign key/);
+ const documentPool=new pg.Pool(options);
+ const files=new Map();
+ const objectStore={async put(key,bytes){files.set(key,bytes)},async get(key){return files.get(key)},
+   async size(key){return files.get(key)?.length ?? 0},async presignGet(){return null}};
+ const service=createDocumentService(documentPool,{JWT_SECRET:"integration-secret",PUBLIC_BASE_URL:"https://example.test"},objectStore);
+ const auth={userId:owner,organizationId:invitedOrg,role:"field_agent",tokenVersion:1};
+ const audit={ip:"127.0.0.1",headers:{}};
+ try {
+  const upload=await service.initiate(auth,audit,{fileName:"plot.pdf",mimeType:"application/pdf",size:3,plotId},"test-upload-key");
+  assert.deepEqual(await service.listForPlot(auth,plotId),[]);
+  await service.content(upload.documentId,upload.headers["X-Upload-Token"],Buffer.from("pdf"));
+  await service.complete(auth,audit,upload.documentId);
+  const documents=await service.listForPlot(auth,plotId);
+  assert.equal(documents.length,1);assert.equal(documents[0].plotId,plotId);
+  assert.equal((await service.download(auth,upload.documentId)).bytes.toString(),"pdf");
+  await assert.rejects(service.listForPlot(auth,otherPlot),/not found/i);
+  await assert.rejects(service.initiate(auth,audit,{fileName:"plot.pdf",mimeType:"application/pdf",size:3,plotId:otherPlot},"test-upload-key"),/metadata differs/i);
+ } finally { await documentPool.end(); }
+ console.log("PASS: migrations 018-019 and document upload, completion, tenant isolation and retrieval on real PostgreSQL.");
+ console.log("PostGIS and full schema migration not covered; isolated minimal tables used.");
 } finally {
  await Promise.allSettled([a?.query("ROLLBACK"),b?.query("ROLLBACK")]);
  await Promise.allSettled([a?.end(),b?.end(),c?.end()]);

@@ -1,6 +1,7 @@
 import type {
   AuthSession,
   AuthUser,
+  DocumentRecord,
   OperationalRequest,
   Organization,
   OrganizationGeofence,
@@ -367,6 +368,8 @@ export async function uploadDocument(asset: {
   mimeType: string;
   size: number;
   idempotencyKey: string;
+  plotId?: string;
+  expectedScope?: AuthRequestScope;
 }) {
   const initiation = await request<{
     documentId: string;
@@ -379,8 +382,9 @@ export async function uploadDocument(asset: {
       fileName: asset.name,
       mimeType: asset.mimeType,
       size: asset.size,
+      ...(asset.plotId ? { plotId: asset.plotId } : {}),
     }),
-  });
+  }, true, true, asset.expectedScope);
   const { uploadFile } = await import("./services/native-upload");
   const upload = await uploadFile(initiation.uploadUrl, asset.uri, initiation.headers ?? {});
   if (!upload.ok) {
@@ -392,8 +396,12 @@ export async function uploadDocument(asset: {
       method: "POST",
       headers: { "Idempotency-Key": asset.idempotencyKey },
       body: JSON.stringify({}),
-    },
+    }, true, true, asset.expectedScope,
   );
+}
+
+export function getPlotDocuments(plotId: string, expectedScope?: AuthRequestScope) {
+  return request<DocumentRecord[]>(`/api/v1/plots/${encodeURIComponent(plotId)}/documents`, undefined, true, true, expectedScope);
 }
 
 export function requestOperation(

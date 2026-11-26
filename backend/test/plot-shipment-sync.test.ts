@@ -4,6 +4,7 @@ import type { PoolClient, QueryResult } from "pg";
 import { AppError } from "../src/errors.js";
 import type { PushOperation } from "../src/domain/sync-contract.js";
 import { applyPlot, plotJson } from "../src/repositories/sync-repository.js";
+import { pushSchema } from "../src/domain/sync-contract.js";
 
 const organizationId = "b23815e3-8701-41bc-b0a4-168f07521dd5";
 const supplierId = "c2314a55-b213-4dce-8754-f144cd93848a";
@@ -74,5 +75,17 @@ test("plot sync serialization includes an associated shipment id", () => {
     captured_at: new Date("2026-09-14T20:00:00.000Z"),
     source_updated_at: new Date("2026-09-14T20:00:00.000Z"),
   });
+
   assert.equal(serialized.shipmentId, shipmentId);
+});
+
+test("plot region is validated and returned in sync responses", () => {
+  const operation = linkedPlotOperation();
+  operation.payload.region = "Oromia";
+  assert.equal(pushSchema.parse({ deviceId: "device", operations: [operation] }).operations[0]?.payload.region, "Oromia");
+  assert.equal(pushSchema.safeParse({ deviceId: "device", operations: [
+    { ...operation, payload: { ...operation.payload, region: "x".repeat(201) } },
+  ] }).success, false);
+  const result = plotJson({ region: "Oromia", area_ha: "1", revision: 1 });
+  assert.equal(result.region, "Oromia");
 });

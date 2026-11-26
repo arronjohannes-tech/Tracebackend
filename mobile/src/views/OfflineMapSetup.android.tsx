@@ -5,13 +5,14 @@ import type { Translation } from "../i18n";
 import { isSqliteHeader } from "../offlineMap";
 
 const MAP_URL = "https://download.geofabrik.de/africa/ethiopia-shortbread-1.0.mbtiles";
+const MIN_MAP_BYTES = 50 * 1024 * 1024;
 let activeDownload: Promise<void> | null = null;
 let downloadProgress: number | null = null;
 const progressListeners = new Set<(value: number | null) => void>();
 
 async function validMap(uri: string) {
   const info = await FileSystem.getInfoAsync(uri);
-  if (!info.exists || info.isDirectory || info.size <= 16) return false;
+  if (!info.exists || info.isDirectory || info.size < MIN_MAP_BYTES) return false;
   const header = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
     position: 0,
@@ -68,9 +69,11 @@ function downloadMap(mapUri: string, errorMessage: string) {
 export default function OfflineMapSetup({
   t,
   onMapChange,
+  offerDownload = false,
 }: {
   t: Translation;
   onMapChange: (uri: string | null) => void;
+  offerDownload?: boolean;
 }) {
   const [ready, setReady] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -141,7 +144,7 @@ export default function OfflineMapSetup({
     ]);
   }
 
-  if (!ready && !error && !downloading) return null;
+  if (!offerDownload && !ready && !error && !downloading) return null;
 
   return (
     <View style={styles.container}>
@@ -150,7 +153,10 @@ export default function OfflineMapSetup({
         accessibilityRole="button"
         accessibilityState={{ disabled: downloading }}
         disabled={downloading}
-        onPress={ready ? remove : () => void download()}
+        onPress={ready ? remove : () => Alert.alert(t.plots.offlineMapDownload, t.plots.offlineMapInfo, [
+          { text: t.plots.cancel, style: "cancel" },
+          { text: t.plots.offlineMapDownload, onPress: () => void download() },
+        ])}
         style={[styles.button, downloading && styles.disabled]}
       >
         <Text style={styles.buttonText}>

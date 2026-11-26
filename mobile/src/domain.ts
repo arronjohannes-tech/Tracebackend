@@ -54,6 +54,7 @@ export type Plot = {
   documentId?: string;
   producer: string;
   farmName: string;
+  region?: string;
   areaHa: string;
   polygon: GeoJsonPolygon;
   trackPoints?: GpsTrackPoint[];
@@ -105,6 +106,7 @@ export type ShipmentInput = Omit<Shipment, "id" | "supplierName" | "createdAt" |
 
 export type DocumentRecord = {
   id: string;
+  plotId?: string;
   fileName: string;
   mimeType: string;
   size: number;

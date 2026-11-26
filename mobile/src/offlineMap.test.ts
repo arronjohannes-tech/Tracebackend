@@ -9,6 +9,13 @@ test("offline map uses only a local MBTiles source, or no source before download
   assert.equal(local.sources.ethiopia.type, "vector");
   assert.equal("url" in local.sources.ethiopia && local.sources.ethiopia.url,
     "mbtiles:///data/user/0/app/files/ethiopia.mbtiles");
+  assert.ok(local.layers.some((layer) => layer.id === "places" && layer.type === "symbol"));
+  const faces = local["font-faces"]?.["Astertrace Noto"];
+  assert.ok(Array.isArray(faces));
+  assert.deepEqual(faces.map((face) => typeof face === "string" ? face : face.url), [
+    "asset://mapfonts/NotoSansEthiopic-Regular.ttf",
+    "asset://mapfonts/NotoSans-Regular.ttf",
+  ]);
   assert.throws(() => offlineMapStyle("https://example.com/map.mbtiles"), /local file/);
 });
 

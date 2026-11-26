@@ -179,6 +179,8 @@ export type Translation = {
   };
   operations: {
     title: string;
+    plotSelection: string;
+    plotUploadRequired: string;
     documents: string;
     pickUpload: string;
     uploadsList: string;
@@ -322,7 +324,7 @@ export const translations = {
       tooFewTrackPoints: "Für eine Grenze sind mindestens drei unterschiedliche GPS-Punkte erforderlich.",
     },
     operations: {
-      title: "Compliance-Vorgänge", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
+      title: "Compliance-Vorgänge", plotSelection: "Plot-ID auswählen", plotUploadRequired: "Wählen Sie einen synchronisierten Plot und stellen Sie eine Internetverbindung her.", documents: "Dokumente", pickUpload: "Dokument auswählen und hochladen",
       uploadsList: "Upload-Liste", requestsList: "Vorgangs-Liste", downloadedList: "Downloads",
       satellite: "Satellitenanalyse", requestSatellite: "Analyse anfordern", evidence: "Evidence Pack",
       requestEvidence: "Evidence Pack anfordern", dds: "DDS-Entwurf", createDds: "DDS-Entwurf erstellen",
@@ -452,7 +454,7 @@ export const translations = {
       tooFewTrackPoints: "At least three distinct GPS points are required for a boundary.",
     },
     operations: {
-      title: "Compliance operations", documents: "Documents", pickUpload: "Pick and upload document",
+      title: "Compliance operations", plotSelection: "Select plot ID", plotUploadRequired: "Select a synchronized plot and connect to the internet.", documents: "Documents", pickUpload: "Pick and upload document",
       uploadsList: "Upload list", requestsList: "Operation list", downloadedList: "Downloads",
       satellite: "Satellite analysis", requestSatellite: "Request analysis", evidence: "Evidence pack",
       requestEvidence: "Request evidence pack", dds: "DDS draft", createDds: "Create DDS draft",
@@ -582,7 +584,7 @@ export const translations = {
       tooFewTrackPoints: "ለድንበር ቢያንስ ሶስት የተለያዩ GPS ነጥቦች ያስፈልጋሉ።",
     },
     operations: {
-      title: "የተገዢነት ሂደቶች", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
+      title: "የተገዢነት ሂደቶች", plotSelection: "የመሬት መለያ ይምረጡ", plotUploadRequired: "የተመሳሰለ መሬት ይምረጡ እና ከኢንተርኔት ጋር ይገናኙ።", documents: "ሰነዶች", pickUpload: "ሰነድ ምረጥና ስቀል",
       uploadsList: "የማስቀመጫ ዝርዝር", requestsList: "የሂደት ዝርዝር", downloadedList: "የወረዱ ፋይሎች",
       satellite: "የሳተላይት ትንተና", requestSatellite: "ትንተና ጠይቅ", evidence: "የማስረጃ ጥቅል",
       requestEvidence: "የማስረጃ ጥቅል ጠይቅ", dds: "የDDS ረቂቅ", createDds: "የDDS ረቂቅ ፍጠር",
@@ -712,7 +714,7 @@ export const translations = {
       tooFewTrackPoints: "ንዶብ እንተወሓደ ሰለስተ ዝተፈላለዩ GPS ነጥብታት የድልዩ።",
     },
     operations: {
-      title: "መስርሓት ምኽባር ሕጊ", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",
+      title: "መስርሓት ምኽባር ሕጊ", plotSelection: "መለለዪ ግራት ምረጽ", plotUploadRequired: "ዝተመሳሰለ ግራት ምረጽን ኢንተርነት ተጠቐምን።", documents: "ሰነዳት", pickUpload: "ሰነድ ምረጽን ስቐልን",
       uploadsList: "ዝርዝር ምስቃል", requestsList: "ዝርዝር መስርሕ", downloadedList: "ዝወረዱ ፋይላት",
       satellite: "ትንተና ሳተላይት", requestSatellite: "ትንተና ሕተት", evidence: "ጥርናፈ መርትዖ",
       requestEvidence: "ጥርናፈ መርትዖ ሕተት", dds: "ንድፊ DDS", createDds: "ንድፊ DDS ፍጠር",
@@ -838,7 +840,7 @@ export const translations = {
       tooFewTrackPoints: "Daangaaf tuqaalee GPS adda addaa yoo xiqqaate sadii barbaachisu.",
     },
     operations: {
-      title: "Hojiiwwan ulaagaalee", documents: "Sanadoota", pickUpload: "Sanada filadhuutii ol fe'i",
+      title: "Hojiiwwan ulaagaalee", plotSelection: "ID lafaa filadhu", plotUploadRequired: "Lafa walsimsiifame filadhuutii intarneetatti walqabsiisi.", documents: "Sanadoota", pickUpload: "Sanada filadhuutii ol fe'i",
       uploadsList: "Tarree ol fe'umsaa", requestsList: "Tarree hojiiwwanii", downloadedList: "Kan buufaman",
       satellite: "Xiinxala saatalaayitii", requestSatellite: "Xiinxala gaafadhu", evidence: "Tuuta ragaa",
       requestEvidence: "Tuuta ragaa gaafadhu", dds: "Wixinee DDS", createDds: "Wixinee DDS uumi",

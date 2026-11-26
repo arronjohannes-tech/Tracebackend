@@ -29,6 +29,7 @@ export function plotJson(row: Record<string, unknown>) {
     ...(row.document_id ? { documentId: row.document_id } : {}),
     producer: row.producer,
     farmName: row.farm_name,
+    ...(row.region ? { region: row.region } : {}),
     areaHa: String(row.area_ha),
     polygon: row.polygon,
     trackPoints: row.track_points ?? [],
@@ -164,10 +165,10 @@ export async function applyPlot(
   const row = await queryOne<Record<string, unknown>>(client,
     `INSERT INTO plots(
        id, organization_id, supplier_id, shipment_id, document_id, producer, farm_name, area_ha,
-       polygon, track_points, geofence_status, local_geofence_result, captured_at, source_updated_at
+       polygon, track_points, geofence_status, local_geofence_result, captured_at, source_updated_at, region
      ) VALUES (
        $1, $2, $3, $4, $5, $6, $7, $8,
-       ST_SetSRID(ST_GeomFromGeoJSON($9), 4326), $10::jsonb, $11, $12, $13, $14
+       ST_SetSRID(ST_GeomFromGeoJSON($9), 4326), $10::jsonb, $11, $12, $13, $14, $15
      )
      ON CONFLICT (organization_id, id) DO UPDATE SET
        revision = plots.revision + 1,
@@ -175,6 +176,7 @@ export async function applyPlot(
        document_id = EXCLUDED.document_id,
        producer = EXCLUDED.producer,
        farm_name = EXCLUDED.farm_name, area_ha = EXCLUDED.area_ha,
+       region = COALESCE(EXCLUDED.region, plots.region),
        polygon = EXCLUDED.polygon, track_points = EXCLUDED.track_points,
        geofence_status = EXCLUDED.geofence_status,
        local_geofence_result = EXCLUDED.local_geofence_result,
@@ -196,6 +198,7 @@ export async function applyPlot(
       geofence.localGeofenceResult,
       operation.payload.capturedAt,
       operation.payload.updatedAt,
+      operation.payload.region ?? null,
     ]);
   const payload = plotJson(row!);
   await client.query(

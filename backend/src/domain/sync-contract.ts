@@ -14,6 +14,7 @@ const plotPayload = z.object({
   documentId: z.string().uuid().optional(),
   producer: z.string().trim().min(1).max(200),
   farmName: z.string().trim().min(1).max(200),
+  region: z.string().trim().min(1).max(200).optional(),
   areaHa: z.string().refine((value) => Number.isFinite(Number(value)) && Number(value) > 0),
   polygon: z.unknown(),
   trackPoints: z.array(z.object({
