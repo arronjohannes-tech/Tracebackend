@@ -104,7 +104,8 @@ export function backgroundResolution(bbox, viewBbox, width, height, pixelRatio =
   const [right, bottom] = projection.project([bbox[2], bbox[1]]);
   const scale = Math.min(width / projection.width, height / projection.height);
   const pixels = Math.max(right - left, bottom - top) * scale * Math.min(2, Math.max(1, pixelRatio));
-  return [256, 512, 1024, 2048].find((size) => size >= pixels) ?? 2048;
+  const nearest = [256, 512, 1024, 2048].find((size) => size >= pixels) ?? 2048;
+  return Math.max(1024, nearest);
 }
 
 /** True when every vertex of every plot lies inside the bounding box. */

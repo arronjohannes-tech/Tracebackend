@@ -133,11 +133,11 @@ test("distant selections split into local backgrounds while neighbouring plots s
 
 test("background resolution follows rendered size, device density and each image's share of the map", () => {
   const bbox = [36, 7, 36.01, 7.01];
-  assert.equal(backgroundResolution(bbox, bbox, 300, 300), 512);
+  assert.equal(backgroundResolution(bbox, bbox, 300, 300), 1024);
   assert.equal(backgroundResolution(bbox, bbox, 300, 300, 2), 1024);
   assert.equal(backgroundResolution(bbox, bbox, 900, 900, 4), 2048);
   assert.equal(backgroundResolution(bbox, bbox, 4000, 4000), 2048);
-  assert.equal(backgroundResolution(bbox, [36, 7, 37, 8], 1000, 700, 2), 256);
+  assert.equal(backgroundResolution(bbox, [36, 7, 37, 8], 1000, 700, 2), 1024);
 });
 
 test("multiple satellite images retain geographic placement below all polygons", () => {

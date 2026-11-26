@@ -1690,7 +1690,7 @@ function renderPlots() {
     state.comparisonConfig = null;
     state.mapComparison = "off";
   }
-  if (polygonView && !state.comparisonConfig) void loadComparisonConfig();
+  if (!state.comparisonConfig) void loadComparisonConfig();
   const comparisonConfig = state.comparisonConfig;
   const comparing = state.mapComparison !== "off";
   $("#plot-map-controls").hidden = !polygonView;
